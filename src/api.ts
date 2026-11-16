@@ -300,8 +300,10 @@ export async function selfTest(): Promise<string> {
   const steps: string[] = [];
   try {
     const info = await api.play(117, 3);
-    steps.push(`play:${info?.video_url ? "ok" : "empty"}`);
-    const hlsUrl = `${LOCAL}/hls?u=${encodeURIComponent(info.video_url)}`;
+    const streamUrl = info?.streams?.main || info?.video_url || info?.streams?.hevc || info?.video_url_hevc || "";
+    steps.push(`play:${streamUrl ? "ok" : "empty"}`);
+    if (!streamUrl) throw new Error("empty playback URL");
+    const hlsUrl = `${LOCAL}/hls?u=${encodeURIComponent(streamUrl)}`;
     const r1 = await fetch(hlsUrl);
     const txt = await r1.text();
     steps.push(`hls:${r1.status}/${txt.length}/${txt.startsWith("#EXTM3U") ? "m3u8" : "bad"}`);
