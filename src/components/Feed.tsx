@@ -949,7 +949,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   }, [playKey]);
 
   /* Recover platform interruptions without replacing an explicit pause intent. */
-  const keepAlive = useCallback((resumeIfPaused: boolean) => {
+  const keepAlive = useCallback(() => {
     for (const t of keepAliveTimers.current) window.clearTimeout(t);
     keepAliveTimers.current = [];
     const expected = keepAliveContext.current;
@@ -960,7 +960,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       keepAliveTimers.current.push(window.setTimeout(() => {
         const current = keepAliveContext.current;
         if (!current.active || current.key !== expected.key || videoRef.current !== handle || handle.el() !== video) return;
-        if (resumeIfPaused && video.paused) handle.resumeIfWanted();
+        if (video.paused) handle.resumeIfWanted();
       }, delay) as unknown as number);
     }
   }, []);
@@ -979,7 +979,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     setClean(false);
     setFs(true);
     wake();
-    keepAlive(!paused);
+    keepAlive();
     if (!isDesktop) {
       try { void invoke("set_orientation", { landscape }); } catch { /* ignore */ }
       if (landscape) {
@@ -988,17 +988,17 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         } catch { /* ignore */ }
       }
     }
-  }, [isDesktop, keepAlive, paused, resolveSwipe, effectiveVideoIds.length, setClean, setFs]);
+  }, [isDesktop, keepAlive, resolveSwipe, effectiveVideoIds.length, setClean, setFs]);
 
   const exitFs = useCallback(() => {
     setClean(false);
     setFs(false);
-    keepAlive(!paused);
+    keepAlive();
     if (!isDesktop) {
       try { void invoke("set_orientation", { landscape: false }); } catch { /* ignore */ }
       try { screen.orientation?.unlock?.(); } catch { /* ignore */ }
     }
-  }, [isDesktop, keepAlive, paused, setClean, setFs]);
+  }, [isDesktop, keepAlive, setClean, setFs]);
 
   /* 若用户在视频首帧宽高解析出来前已点进全屏，解析出横屏后自动补发横屏方向请求 */
   useEffect(() => {
@@ -1018,7 +1018,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       setVpLandscape((prev) => {
         if (prev !== isLand && active) {
           setFs(isLand);
-          keepAlive(!paused);
+          keepAlive();
         }
         return isLand;
       });
@@ -1029,7 +1029,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       window.removeEventListener("resize", onViewportChange);
       window.removeEventListener("orientationchange", onViewportChange);
     };
-  }, [isDesktop, active, paused, setFs, keepAlive]);
+  }, [isDesktop, active, setFs, keepAlive]);
 
   /* 全屏切换或视口旋转后校准滚动容器 scrollTop：
      - 进入全屏时非当前项已隐藏，当前项位于顶部 scrollTop = 0；
