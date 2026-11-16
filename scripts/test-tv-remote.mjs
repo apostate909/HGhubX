@@ -204,6 +204,7 @@ try {
       { id: 3, ep: 2, t: 41, dur: 60, at: 100 },
     ] };
     const { page } = await open({ fixture: { legacy, detailDelay: 120 } });
+    assert.equal(await page.evaluate(() => document.querySelector(".tv-page-scroll:not([hidden])")?.scrollTop), 0, "First page must open at its heading");
     await page.waitForFunction(() => {
       const shelf = document.querySelector('[data-tv-region="home-继续观看"]');
       return ["我的时间", "我的时间 第二季", "新的时间"].every((title, index) => {
@@ -260,7 +261,7 @@ try {
     assert.equal(await retry.locator("img").count(), 1);
     assert.equal(await page.locator(".tv-detail-route").count(), 0, "Confirm on failed metadata retries without entering detail");
     assert.equal(await activeKey(page), "video:6", "Metadata replacement preserves the focused card");
-    assert.equal((await calls(page, "api_video")).filter(call => call.args.id === 6).length, 2);
+    assert.equal((await calls(page, "api_video")).filter(call => call.args.id === 6).length, 2, "Retry must request failed metadata exactly once");
     return { unknownTagsHydrated: true, blockedCoverAbsent: true, retryByRemote: true, focusPreserved: true };
   });
   await scenario("player-remote-seek-last-part", async () => {

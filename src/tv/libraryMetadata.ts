@@ -1,6 +1,6 @@
 import { api } from "../api";
 import { hydrateLibraryContent } from "./library";
-import type { TvContent } from "./model";
+import { contentKey, type TvContent } from "./model";
 import { detailContent } from "./player/content";
 import { indexMetadata } from "./search/catalog";
 
@@ -8,14 +8,20 @@ import { indexMetadata } from "./search/catalog";
 // until completion, including after a route/source change.
 let active = 0, generation = 0;
 const queue: (() => void)[] = [];
+type MetadataJob = { promise: Promise<void>; currents: Set<() => boolean> };
+const inFlight = new Map<string, MetadataJob>();
 window.addEventListener("hg:line-changed", () => { generation++; });
 window.addEventListener("hg:proxy-changed", () => { generation++; });
 function pump() { while (active < 2 && queue.length) queue.shift()!(); }
 
 export function loadLibraryMetadata(content: TvContent, source: string, isCurrent: () => boolean): Promise<void> {
   const token = generation;
-  const current = () => token === generation && isCurrent() && !document.hidden;
-  return new Promise((resolve, reject) => {
+  const requestKey = `${contentKey(content)}:${source}:${token}`;
+  const existing = inFlight.get(requestKey);
+  if (existing) { existing.currents.add(isCurrent); return existing.promise; }
+  const job: MetadataJob = { promise: Promise.resolve(), currents: new Set([isCurrent]) };
+  const current = () => token === generation && !document.hidden && [...job.currents].some(test => test());
+  job.promise = new Promise<void>((resolve, reject) => {
     queue.push(() => {
       active++;
       void (async () => {
@@ -28,6 +34,10 @@ export function loadLibraryMetadata(content: TvContent, source: string, isCurren
         if (saved && current()) void indexMetadata(source, [metadata]).catch(() => {});
       })().then(resolve, reject).finally(() => { active--; pump(); });
     });
-    pump();
   });
+  const settle = () => { job.currents.clear(); if (inFlight.get(requestKey) === job) inFlight.delete(requestKey); };
+  job.promise.then(settle, settle);
+  inFlight.set(requestKey, job);
+  pump();
+  return job.promise;
 }

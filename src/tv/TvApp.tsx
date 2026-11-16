@@ -25,6 +25,12 @@ export default function TvApp(){
   const current=stack[stack.length-1],playing=current?.kind==="player";
   const page=current?`${current.kind}:${contentKey(current.content)}`:tab;
   useEffect(()=>{setCatalogPaused(playing);return()=>setCatalogPaused(false);},[playing]);
+  useEffect(()=>{
+    if(!tv.ready)return;
+    // Clear a restored WebView scroll so the first page opens on its heading.
+    const reset=()=>document.querySelectorAll<HTMLElement>(".tv-page-scroll").forEach(element=>{element.scrollTop=0;element.scrollLeft=0;});
+    reset();const frame=requestAnimationFrame(reset);return()=>cancelAnimationFrame(frame);
+  },[tv.ready]);
   useEffect(()=>{restoreFocus(page);},[page,tv.ready]);
   const back=()=>{
     rememberFocus(page);

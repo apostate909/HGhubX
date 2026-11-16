@@ -61,7 +61,9 @@ export function installTvFixture({ accepted = false, legacy, contentPreferences,
         try {
           if (fixture.detailDelay) await new Promise(resolve => setTimeout(resolve, fixture.detailDelay));
           if (fixture.heldDetailIds.includes(args.id)) await new Promise(resolve => fixture.detailReleases.push(resolve));
-          if (fixture.failDetailIds.includes(args.id)) throw new Error("fixture detail unavailable");
+          // Tauri invoke rejects with a host string. Keep this a string so the
+          // app's network-only one-shot retry does not swallow the UI retry test.
+          if (fixture.failDetailIds.includes(args.id)) throw "fixture detail unavailable";
           if (command === "api_post") {
             const post = posts.find(item => item.id === args.id); if (!post) throw new Error("Unknown post identity");
             return { ...post, content: "ARTICLE_BODY_MUST_NOT_RENDER" };
