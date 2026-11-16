@@ -25,7 +25,7 @@ function apply() {
   style.setProperty("--tv-inset-bottom", `${current.bottom}vh`);
 }
 
-/** Applies to the app and its portal host, including the first-run agreement. */
+/** Shared safe padding for controls and reading surfaces; never shrink video. */
 export function installTvDisplay() {
   if (!isTv) return;
   document.documentElement.dataset.appEdition = "tv";

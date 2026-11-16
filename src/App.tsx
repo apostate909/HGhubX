@@ -246,13 +246,14 @@ function TvShell() {
   const { tab, setTab, stack, push, pop, loginOpen, fs, theater } = useStore();
   const top = stack[stack.length - 1];
   const railPage = top?.kind === "settings" || top?.kind === "ranks" ? top.kind : null;
+  const playback = top ? top.kind === "feed" : tab === "home";
   const items = [
     { key: "home", label: "首页", Icon: IHome },
     { key: "search", label: "搜索", Icon: ISearch },
     { key: "category", label: "分类", Icon: IGrid },
     { key: "profile", label: "我的", Icon: IUser },
   ] as const;
-  return <div className="tv-shell plat-android">
+  return <div className="tv-shell plat-android" data-playback={playback} data-nav-hidden={fs || theater}>
     {!fs && !theater && <header className="tv-header">
       <div className="tv-brand"><Logo size={30} /><span>HGhubX <small>TV</small></span></div>
       <nav className="tv-nav" aria-label="主导航">

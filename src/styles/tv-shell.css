@@ -1,24 +1,29 @@
-/* TV has its own safe viewport. Android consumes reported system insets once;
-   these user-adjustable margins cover overscan and unreported manufacturer UI. */
+/* Video keeps the full viewport. Only navigation, controls and reading surfaces
+   consume user-adjustable overscan margins; native system insets are separate. */
 html[data-app-edition="tv"] body { background:#071218; }
 html[data-app-edition="tv"] #root {
   position:absolute;
-  left:var(--tv-inset-x,3vw); right:var(--tv-inset-x,3vw);
-  top:var(--tv-inset-top,3vh); bottom:var(--tv-inset-bottom,3vh);
+  inset:0;
   width:auto !important; height:auto !important;
   --sat:0px; --sab:0px;
 }
-.tv-shell { position:absolute; inset:0; display:flex; flex-direction:column; min-width:0; background:var(--p-canvas); }
-.tv-header { display:flex; align-items:center; flex:none; gap:20px; padding:12px 16px; border-bottom:1px solid var(--p-s3); }
+.tv-shell { --tv-header-space:calc(76px + var(--tv-inset-top,3vh)); position:absolute; inset:0; min-width:0; background:var(--p-canvas); }
+.tv-shell[data-nav-hidden="true"] { --tv-header-space:var(--tv-inset-top,3vh); }
+.tv-header { position:absolute; top:0; left:0; right:0; z-index:50; display:flex; align-items:center; gap:20px; height:var(--tv-header-space); padding:calc(var(--tv-inset-top,3vh) + 8px) calc(var(--tv-inset-x,3vw) + 16px) 8px; background:var(--p-canvas); }
+.tv-shell[data-playback="true"] .tv-header { background:linear-gradient(rgba(7,12,18,.9),rgba(7,12,18,.72),transparent); }
+.tv-shell[data-playback="true"] .tv-brand,
+.tv-shell[data-playback="true"] .tv-nav .ios-button:not([aria-current="page"]) { color:#f5f5f7; }
 .tv-brand { display:flex; align-items:center; gap:10px; flex:none; color:var(--p-on); font-size:20px; font-weight:800; white-space:nowrap; }
 .tv-brand small { color:var(--p-primary); font-size:15px; }
 .tv-nav { display:flex; align-items:center; flex:1; min-width:0; gap:6px; overflow-x:auto; padding:4px; }
 .tv-nav .ios-button { display:flex; gap:8px; align-items:center; justify-content:center; flex:none; padding:10px 16px; min-height:48px; border-radius:14px; font-size:17px; white-space:nowrap; color:var(--p-on); }
 .tv-nav .ios-button[aria-current="page"] { color:var(--p-on-primary); background:var(--p-primary); }
-.tv-main { position:relative; flex:1; min-height:0; min-width:0; overflow:hidden; }
-html[data-app-edition="tv"] .ios-overlay { --sab:0px; padding:20px; }
+.tv-main { position:absolute; inset:0; min-height:0; min-width:0; overflow:hidden; }
+.tv-shell[data-playback="false"] .tv-main { top:var(--tv-header-space); left:var(--tv-inset-x,3vw); right:var(--tv-inset-x,3vw); bottom:var(--tv-inset-bottom,3vh); }
+html[data-app-edition="tv"] .ios-overlay { --sab:0px; padding:calc(var(--tv-inset-top,3vh) + 12px) calc(var(--tv-inset-x,3vw) + 12px) calc(var(--tv-inset-bottom,3vh) + 12px); }
 html[data-app-edition="tv"] .hg-agreement,
 html[data-app-edition="tv"] .hg-launch { position:absolute; height:100%; }
+html[data-app-edition="tv"] .hg-agreement { padding:calc(var(--tv-inset-top,3vh) + 12px) calc(var(--tv-inset-x,3vw) + 12px) calc(var(--tv-inset-bottom,3vh) + 12px); }
 html[data-app-edition="tv"] .hg-agreement-card { max-width:960px; }
 html[data-app-edition="tv"] .hg-agreement-text p,
 html[data-app-edition="tv"] .hg-agreement-check,
@@ -42,7 +47,7 @@ html[data-app-edition="tv"] .ios-input { min-height:48px; font-size:18px; }
 .tv-display-stepper output { min-width:48px; text-align:center; font-variant-numeric:tabular-nums; }
 .tv-display-reset { margin-top:12px; padding:10px 20px; border-radius:12px; background:var(--p-s3); }
 @media (max-width:900px) {
-  .tv-header { gap:8px; padding:6px; }
+  .tv-header { gap:8px; padding-left:calc(var(--tv-inset-x,3vw) + 8px); padding-right:calc(var(--tv-inset-x,3vw) + 8px); }
   .tv-brand { font-size:17px; gap:6px; }
   .tv-nav .ios-button { padding:8px 12px; font-size:16px; }
   .tv-nav .ios-button svg { display:none; }

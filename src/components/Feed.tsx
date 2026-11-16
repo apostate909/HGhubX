@@ -949,7 +949,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   }, [playKey]);
 
   /* Recover platform interruptions without replacing an explicit pause intent. */
-  const keepAlive = useCallback(() => {
+  const keepAlive = useCallback((resumeIfPaused: boolean) => {
     for (const t of keepAliveTimers.current) window.clearTimeout(t);
     keepAliveTimers.current = [];
     const expected = keepAliveContext.current;
@@ -960,7 +960,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       keepAliveTimers.current.push(window.setTimeout(() => {
         const current = keepAliveContext.current;
         if (!current.active || current.key !== expected.key || videoRef.current !== handle || handle.el() !== video) return;
-        if (video.paused) handle.resumeIfWanted();
+        if (resumeIfPaused && video.paused) handle.resumeIfWanted();
       }, delay) as unknown as number);
     }
   }, []);
@@ -979,7 +979,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     setClean(false);
     setFs(true);
     wake();
-    keepAlive();
+    keepAlive(!paused);
     if (!isDesktop) {
       try { void invoke("set_orientation", { landscape }); } catch { /* ignore */ }
       if (landscape) {
@@ -988,17 +988,17 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         } catch { /* ignore */ }
       }
     }
-  }, [isDesktop, keepAlive, resolveSwipe, effectiveVideoIds.length, setClean, setFs]);
+  }, [isDesktop, keepAlive, paused, resolveSwipe, effectiveVideoIds.length, setClean, setFs]);
 
   const exitFs = useCallback(() => {
     setClean(false);
     setFs(false);
-    keepAlive();
+    keepAlive(!paused);
     if (!isDesktop) {
       try { void invoke("set_orientation", { landscape: false }); } catch { /* ignore */ }
       try { screen.orientation?.unlock?.(); } catch { /* ignore */ }
     }
-  }, [isDesktop, keepAlive, setClean, setFs]);
+  }, [isDesktop, keepAlive, paused, setClean, setFs]);
 
   /* 若用户在视频首帧宽高解析出来前已点进全屏，解析出横屏后自动补发横屏方向请求 */
   useEffect(() => {
@@ -1018,7 +1018,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       setVpLandscape((prev) => {
         if (prev !== isLand && active) {
           setFs(isLand);
-          keepAlive();
+          keepAlive(!paused);
         }
         return isLand;
       });
@@ -1029,7 +1029,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       window.removeEventListener("resize", onViewportChange);
       window.removeEventListener("orientationchange", onViewportChange);
     };
-  }, [isDesktop, active, setFs, keepAlive]);
+  }, [isDesktop, active, paused, setFs, keepAlive]);
 
   /* 全屏切换或视口旋转后校准滚动容器 scrollTop：
      - 进入全屏时非当前项已隐藏，当前项位于顶部 scrollTop = 0；
@@ -1227,7 +1227,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
   return (
     <div
-      className={`hg-player-ui ${rotated ? "fs-landscape" : (!isDesktop && fs ? "fs-immersive" : "absolute inset-0")} overflow-hidden bg-black player-root ${controlsLocked ? "is-locked" : ""} ${isDesktop ? "player-surface" : ""} ${isTv ? "tv-feed" : ""} ${theater ? "is-theater" : ""} ${isDesktop && idle ? "is-idle" : ""}`}
+      className={`hg-player-ui ${rotated ? "fs-landscape" : (!isDesktop && fs ? "fs-immersive" : "absolute inset-0")} overflow-hidden bg-black player-root ${controlsLocked ? "is-locked" : ""} ${isDesktop && !isTv ? "player-surface" : ""} ${isTv ? "tv-feed" : ""} ${theater ? "is-theater" : ""} ${isDesktop && idle ? "is-idle" : ""}`}
       data-tv-panel-open={isTv && !!panel || undefined}
       data-clean={clean}
       inert={!active || undefined}
@@ -1245,7 +1245,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
       <div ref={boxRef} onScroll={onScroll}
         className={`absolute inset-y-0 left-0 no-bar ${fs ? "overflow-hidden" : "overflow-y-scroll snap-y snap-mandatory overscroll-y-contain"}`}
-        style={{ right: isDesktop && panel ? (isTv ? "var(--tv-panel-width)" : 372) : 0, transition: "right .3s cubic-bezier(.2,0,0,1)" }}>
+        style={{ right: isDesktop && !isTv && panel ? 372 : 0, transition: "right .3s cubic-bezier(.2,0,0,1)" }}>
         {effectiveVideoIds.map((vid, i) => {
           const isActive = i === index;
           const sectionClass = `${fs && !isActive ? "hidden" : "relative w-full h-full"} snap-start snap-always overflow-hidden`;
@@ -1477,7 +1477,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               )}
 
               {/* 桌面：左下信息 */}
-              {(isTv || (!fs && !clean)) && isDesktop && (
+              {!isTv && !fs && !clean && isDesktop && (
               <div className="desktop-video-meta">
                 <div className="flex items-center gap-2">
                   <span className="text-[16px] font-bold text-white tsh truncate">@{meta.author}</span>
@@ -1566,7 +1566,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               )}
 
               {/* 暂停 / 缓冲 */}
-              {isActive && paused && !err && (
+              {!isTv && isActive && paused && !err && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
                   <span className="w-[66px] h-[66px] rounded-full flex items-center justify-center backdrop-blur-md"
                     style={{ background: "rgba(0,0,0,.55)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.12)" }}>
@@ -1601,29 +1601,6 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
             {onBack && <Button onClick={onBack} aria-label="返回" className="tv-player-back"><IBack size={20} /></Button>}
             <span className="tv-player-title">{meta.title || title || "正在播放"}</span>
             <span className="tv-player-position">{episodes.length ? `第 ${curEp} / ${episodes.length} 集` : `${index + 1} / ${effectiveVideoIds.length}`}</span>
-            <Button onClick={toggleFull} aria-label={fs ? "退出全屏" : "全屏"} className="tv-player-fullscreen">
-              {fs ? <ICompress size={20} /> : <IExpand size={20} />}
-            </Button>
-          </div>
-          <div className="tv-player-actions" role="group" aria-label="遥控器播放控制">
-            <Button onClick={() => {
-              const previous = episodes.find(episode => episode.ep_num === curEp - 1);
-              if (previous) pickEp(previous.ep_num); else go(-1);
-            }} disabled={!episodes.some(episode => episode.ep_num === curEp - 1) && index <= 0}>
-              <IChevronUp size={18} /><span>{episodes.some(episode => episode.ep_num === curEp - 1) ? "上一集" : "上一部"}</span>
-            </Button>
-            <Button onClick={() => seekRelative(-10, "tv_button")} disabled={!playUrl || !!err} aria-label="后退 10 秒">−10 秒</Button>
-            <Button onClick={() => videoRef.current?.toggle()} disabled={!playUrl || !!err} aria-label={paused ? "播放" : "暂停"} data-tv-initial>
-              {paused ? <IPlayF size={20} /> : <IPauseF size={20} />}<span>{paused ? "播放" : "暂停"}</span>
-            </Button>
-            <Button onClick={() => seekRelative(10, "tv_button")} disabled={!playUrl || !!err} aria-label="前进 10 秒">+10 秒</Button>
-            {kind === "video" && <Button onClick={() => setPanel("episodes")} aria-label="选集"><IList size={20} /><span>选集</span></Button>}
-            <Button onClick={() => {
-              const next = episodes.find(episode => episode.ep_num === curEp + 1);
-              if (next) pickEp(next.ep_num); else go(1);
-            }} disabled={!episodes.some(episode => episode.ep_num === curEp + 1) && index >= effectiveVideoIds.length - 1}>
-              <span>{episodes.some(episode => episode.ep_num === curEp + 1) ? "下一集" : "下一部"}</span><IChevronDown size={18} />
-            </Button>
           </div>
         </div>
       )}
@@ -1649,11 +1626,11 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
           paused={paused} duration={duration} rate={rate}
           clock={playbackClock}
           muted={muted} volume={volume} theater={theater} fullscreen={isTv ? fs : fullscreen}
-          visible={active && (isTv || !idle)}
-          seekEnabled={active && !controlsLocked}
+          visible={active && (isTv ? !panel && !tagMenu && !controlsLocked : !idle)}
+          seekEnabled={active && !controlsLocked && (!isTv || (!panel && !tagMenu))}
           seekKey={playKey}
           nextDisabled={!episodes.some((e) => e.ep_num === curEp + 1) && index >= effectiveVideoIds.length - 1}
-          nextTitle={episodes.some((e) => e.ep_num === curEp + 1) ? "下一集 E" : "下一部 ↓"}
+          nextTitle={episodes.some((e) => e.ep_num === curEp + 1) ? (isTv ? "下一集" : "下一集 E") : (isTv ? "下一部" : "下一部 ↓")}
           swipeEp={swipeEp}
           onToggleSwipe={isTv ? undefined : () => { setSwipeEp(!swipeEp); toast(swipeEp ? "上下划切集已关闭" : "上下划切集已开启"); }}
           onToggle={() => videoRef.current?.toggle()}
@@ -1666,11 +1643,28 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
           onLock={lockControls}
           onTheater={isTv ? undefined : () => setTheater((v) => !v)}
           onFullscreen={toggleFull}
-          onNext={isTv ? undefined : () => {
+          onNext={() => {
             const nx = episodes.find((e) => e.ep_num === curEp + 1);
             if (nx) pickEp(nx.ep_num);
             else go(1);
           }}
+          tvControls={isTv ? {
+            onPrevious: () => {
+              const previous = episodes.find(episode => episode.ep_num === curEp - 1);
+              if (previous) pickEp(previous.ep_num); else go(-1);
+            },
+            previousDisabled: !episodes.some(episode => episode.ep_num === curEp - 1) && index <= 0,
+            previousTitle: episodes.some(episode => episode.ep_num === curEp - 1) ? "上一集" : "上一部",
+            playbackDisabled: !playUrl || !!err,
+            onSkip: seconds => seekRelative(seconds, "tv_button"),
+            onEpisodes: kind === "video" ? () => setPanel("episodes") : undefined,
+            onDetails: () => setPanel("detail"),
+            onPreferences: openTagMenu,
+            quality: hevcUrl ? {
+              preferred: preferHevc,
+              onToggle: () => { setPreferHevc(!preferHevc); toast(preferHevc ? "已切回标准画质" : "已切换高清 HEVC", "ok"); },
+            } : undefined,
+          } : undefined}
         />
       )}
 
