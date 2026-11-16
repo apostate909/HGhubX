@@ -39,7 +39,11 @@ export function postParts(videos: { index: number; url: string }[] = []): TvPart
 }
 
 export function playStreams(info: PlayInfo, expectedId: number, expectedPart: string): TvStreams {
-  if ((info.id != null && info.id !== expectedId) || (info.ep_num != null && String(info.ep_num) !== expectedPart)) {
+  // The current endpoint returns `{ id: "903", ep: 1 }`; the legacy fallback
+  // returns numeric `id` and `ep_num`. Normalize both before identity checks.
+  const returnedPart = info.ep_num ?? info.ep;
+  if ((info.id != null && String(info.id) !== String(expectedId))
+      || (returnedPart != null && String(returnedPart) !== expectedPart)) {
     throw new Error("播放信息已变化，请重试当前剧集");
   }
   const main = info.streams?.main || info.video_url;

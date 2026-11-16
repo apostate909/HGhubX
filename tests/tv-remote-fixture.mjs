@@ -72,7 +72,11 @@ export function installTvFixture({ accepted = false, legacy, contentPreferences,
           return { ...card, counts: { hot: card.hot, collect: 0, comment: 0, like: 0 }, episodes: [1, 2].map(ep => ({ ep_num: ep, title: `第 ${ep} 集`, duration: 60, status: 1 })) };
         } finally { fixture.detailActive--; }
       }
-      if (command === "api_play") return { id: args.id, ep_num: args.ep, title: cards.find(item => item.id === args.id)?.title, duration: 60, video_url: `http://hg.localhost/seg?u=${encodeURIComponent(`${base}/video-${args.id}-${args.ep}.mp4`)}` };
+      if (command === "api_play") {
+        // Match the current upstream shape: string id, `ep`, and streams.main.
+        return { id: String(args.id), ep: args.ep, title: cards.find(item => item.id === args.id)?.title, duration: 60,
+          streams: { main: `http://hg.localhost/seg?u=${encodeURIComponent(`${base}/video-${args.id}-${args.ep}.mp4`)}` } };
+      }
       if (command === "api_post_playback") {
         fixture.postActive++; fixture.postMax = Math.max(fixture.postMax, fixture.postActive);
         try {

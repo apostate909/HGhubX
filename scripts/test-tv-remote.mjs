@@ -197,6 +197,25 @@ try {
     const { page } = await open({ isolated: true });
     return page.evaluate(async () => (await import("/tests/tv-library.ts")).runTvLibraryTests());
   });
+  await scenario("playback-response-compatibility", async () => {
+    const { page } = await open();
+    const result = await page.evaluate(async () => {
+      const { playStreams } = await import("/src/tv/player/content.ts");
+      const current = playStreams({ id: "7", ep: 2, streams: { main: "main.m3u8", hevc: "hevc.m3u8" } }, 7, "2");
+      const legacy = playStreams({ id: 7, ep_num: 2, video_url: "legacy.m3u8" }, 7, "2");
+      let wrongId = "", wrongPart = "";
+      try { playStreams({ id: "8", ep: 2, streams: { main: "wrong-id.m3u8" } }, 7, "2"); }
+      catch (error) { wrongId = error instanceof Error ? error.message : String(error); }
+      try { playStreams({ id: "7", ep: 3, streams: { main: "wrong-part.m3u8" } }, 7, "2"); }
+      catch (error) { wrongPart = error instanceof Error ? error.message : String(error); }
+      return { current, legacy, wrongId, wrongPart };
+    });
+    assert.deepEqual(result.current, { main: "main.m3u8", hevc: "hevc.m3u8" });
+    assert.deepEqual(result.legacy, { main: "legacy.m3u8", hevc: undefined });
+    assert.equal(result.wrongId, "播放信息已变化，请重试当前剧集");
+    assert.equal(result.wrongPart, "播放信息已变化，请重试当前剧集");
+    return result;
+  });
   await scenario("legacy-metadata-autofill-home-library", async () => {
     const legacy = { favs: [1, 4], postFavs: [1], history: [
       { id: 1, ep: 2, t: 23, dur: 60, at: 300 },
