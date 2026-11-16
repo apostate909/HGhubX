@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Tauri merges tauri.android.conf.json for Android only. Keep the TV frontend
-// selection in this hook so desktop/iOS builds keep their ordinary edition.
+// The optional tauri.tv.conf.json selects the TV frontend and Android package.
+// Standard builds do not load this hook. The TV packaging branch copies this
+// config to tauri.android.conf.json before the unchanged workflow runs init.
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";

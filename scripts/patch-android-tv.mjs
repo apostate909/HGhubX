@@ -12,7 +12,7 @@ const main = join(android, "app", "src", "main");
 const manifestPath = join(main, "AndroidManifest.xml");
 const activityPath = join(main, "java", "com", "hghubx", "tv", "MainActivity.kt");
 const gradlePath = join(android, "app", "build.gradle.kts");
-const config = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.android.conf.json"), "utf8"));
+const config = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.tv.conf.json"), "utf8"));
 
 function fail(message) {
   throw new Error(`[tv] ${message}`);
