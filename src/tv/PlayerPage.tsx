@@ -345,7 +345,6 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
           <button data-tv-focus="player:parts" disabled={!loaded?.parts.length} onClick={() => { setModal("parts"); interact(); }}>{content.kind === "post" ? "分段" : "选集"}</button>
           <button data-tv-focus="player:options" onClick={() => { setModal("options"); interact(); }}>选项</button>
         </div>
-        <p className="tv-player-hint">方向键选择 · 确认操作 · 返回收起</p>
       </div>
     </>}
     {modal === "parts" && !blocked && loaded && <TvModal id="player-parts" title={content.kind === "post" ? "视频分段" : "选择剧集"} onClose={() => setModal(null)}>

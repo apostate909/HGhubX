@@ -36,7 +36,7 @@ async function scenario(name, run) {
     await writeFile(join(output, "report.json"), JSON.stringify(report, null, 2));
   }
 }
-async function open({ accepted = true, isolated = false, width = 1280, height = 720 } = {}) {
+async function open({ accepted = true, isolated = false, width = 1280, height = 720, fixture = {} } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce", userAgent: "Mozilla/5.0 (Linux; Android 12; TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" });
   contexts.push(context);
   activeContext = context;
@@ -60,7 +60,7 @@ async function open({ accepted = true, isolated = false, width = 1280, height = 
     if (url.protocol === "blob:" || url.protocol === "data:") return route.continue();
     report.external.push(url.href); return route.abort("blockedbyclient");
   });
-  await page.addInitScript(installTvFixture, { accepted });
+  await page.addInitScript(installTvFixture, { ...fixture, accepted });
   await page.goto(`${origin}${isolated ? "/tests/tv-remote.html" : "/"}`);
   if (!isolated && accepted) await page.locator('[data-tv-focus="nav-home"]').waitFor();
   return { context, page };
@@ -122,6 +122,7 @@ try {
     const card = page.locator('[data-tv-region="home-推荐"] [data-tv-focus="video:1"]');
     await card.waitFor(); await card.focus(); await page.keyboard.press("Enter");
     await page.locator('[data-tv-focus="detail:video:1:more"]').waitFor();
+    assert.equal(await page.locator(".tv-page-heading > :not(h1), .tv-detail-eyebrow").count(), 0, "Page chrome must contain no decorative subtitles");
     await page.waitForFunction(() => !document.querySelector('[data-tv-focus="detail:video:1:more"]')?.disabled);
     await screenshot(page, "detail-1280x720.png");
     await activate(page, "detail:video:1:more");
@@ -196,6 +197,72 @@ try {
     const { page } = await open({ isolated: true });
     return page.evaluate(async () => (await import("/tests/tv-library.ts")).runTvLibraryTests());
   });
+  await scenario("legacy-metadata-autofill-home-library", async () => {
+    const legacy = { favs: [1, 4], postFavs: [1], history: [
+      { id: 1, ep: 2, t: 23, dur: 60, at: 300 },
+      { id: 2, ep: 1, t: 12, dur: 60, at: 200 },
+      { id: 3, ep: 2, t: 41, dur: 60, at: 100 },
+    ] };
+    const { page } = await open({ fixture: { legacy, detailDelay: 120 } });
+    await page.waitForFunction(() => {
+      const shelf = document.querySelector('[data-tv-region="home-继续观看"]');
+      return ["我的时间", "我的时间 第二季", "新的时间"].every((title, index) => {
+        const card = shelf?.querySelector(`[data-tv-focus="video:${index + 1}"]`);
+        return card?.querySelector("strong")?.textContent === title && !!card.querySelector("img");
+      });
+    });
+    assert.equal(await page.locator(".tv-detail-route").count(), 0, "History metadata fills without opening detail");
+    const before = await page.evaluate(async () => (await import("/src/tv/library.ts")).listLibrary());
+    for (const item of legacy.history) {
+      const row = before.find(row => row.key === `video:${item.id}`);
+      assert(row?.progress, "History must still exist after hydration");
+      assert.deepEqual({ part: row.progress.part, seconds: row.progress.seconds, duration: row.progress.duration, updatedAt: row.progress.updatedAt },
+        { part: String(item.ep), seconds: item.t, duration: item.dur, updatedAt: item.at });
+    }
+    assert(before.find(row => row.key === "video:1")?.favorite);
+    assert.equal((await calls(page, "api_video")).filter(call => call.args.id === 4).length, 0, "Unvisited library favorites are not eagerly requested");
+    await screenshot(page, "legacy-history-hydrated-1280x720.png");
+    await activate(page, "nav-library");
+    await page.waitForFunction(() => {
+      const grid = document.querySelector('[data-tv-region="library-grid"]');
+      return grid?.querySelector('[data-tv-focus="video:4"] strong')?.textContent === "WDSJ"
+        && grid?.querySelector('[data-tv-focus="post:1"] strong')?.textContent === "我的时间视频1";
+    });
+    assert.equal(await page.locator(".tv-detail-route").count(), 0);
+    const after = await page.evaluate(async () => (await import("/src/tv/library.ts")).listLibrary());
+    assert(after.find(row => row.key === "video:1")?.favorite && after.find(row => row.key === "post:1")?.favorite, "Same numeric video/post IDs hydrate independently");
+    assert.equal((await calls(page, "api_video")).filter(call => call.args.id === 1).length, 1, "Resolved metadata is reused across home and library");
+    assert.equal((await calls(page, "api_play")).length, 0, "Metadata hydration must not request video playback");
+    assert.equal(await page.locator("video").count(), 0);
+    const maximum = await page.evaluate(() => window.__tvFixture.detailMax);
+    assert(maximum <= 2, "Visible library hydration must stay at two concurrent detail requests");
+    await screenshot(page, "legacy-favorites-hydrated-1280x720.png");
+    return { automaticTitles: true, preservedProgress: true, independentKinds: true, maxDetailConcurrency: maximum };
+  });
+  await scenario("legacy-metadata-tag-gate-retry", async () => {
+    const { page } = await open({ fixture: {
+      legacy: { favs: [], history: [{ id: 1, ep: 1, t: 5, dur: 60, at: 20 }, { id: 6, ep: 2, t: 18, dur: 60, at: 10 }] },
+      contentPreferences: { blockedTags: ["都市"], paused: false, hideUntagged: true },
+      detailDelay: 100, failDetailIds: [6],
+    } });
+    await page.waitForFunction(() => {
+      const shelf = document.querySelector('[data-tv-region="home-继续观看"]');
+      return shelf?.querySelector('[data-tv-focus="video:1"] strong')?.textContent === "已屏蔽的内容"
+        && shelf?.querySelector('[data-tv-focus="video:6"]')?.textContent?.includes("信息加载失败");
+    });
+    const blocked = page.locator('[data-tv-region="home-继续观看"] [data-tv-focus="video:1"]');
+    assert.equal(await blocked.locator("img").count(), 0, "Resolved blocked tags must never mount a cover");
+    assert.equal((await calls(page, "api_video")).filter(call => call.args.id === 1).length, 1, "Unknown legacy tags must be resolved even when hideUntagged is enabled");
+    await page.evaluate(() => { window.__tvFixture.failDetailIds = []; });
+    const retry = page.locator('[data-tv-region="home-继续观看"] [data-tv-focus="video:6"]');
+    await retry.focus(); await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.querySelector('[data-tv-region="home-继续观看"] [data-tv-focus="video:6"] strong')?.textContent === "夜晚故事");
+    assert.equal(await retry.locator("img").count(), 1);
+    assert.equal(await page.locator(".tv-detail-route").count(), 0, "Confirm on failed metadata retries without entering detail");
+    assert.equal(await activeKey(page), "video:6", "Metadata replacement preserves the focused card");
+    assert.equal((await calls(page, "api_video")).filter(call => call.args.id === 6).length, 2);
+    return { unknownTagsHydrated: true, blockedCoverAbsent: true, retryByRemote: true, focusPreserved: true };
+  });
   await scenario("player-remote-seek-last-part", async () => {
     const { page } = await open();
     await page.locator('[data-tv-region="home-推荐"] [data-tv-focus="video:1"]').waitFor();
@@ -206,6 +273,7 @@ try {
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => document.querySelector(".tv-player-controls")?.hidden === false && document.activeElement?.getAttribute("data-tv-focus") === "player:play");
     await screenshot(page, "player-1280x720.png");
+    assert.equal(await page.locator(".tv-player-hint, .tv-detail-eyebrow").count(), 0, "Player must not render decorative subtitle hints");
     assert.equal(await page.locator("video").evaluate(video => video.paused), false, "First confirm reveals without toggling");
     await page.keyboard.press("Enter"); await page.waitForFunction(() => document.querySelector("video")?.paused);
     await activate(page, "player:progress");
@@ -243,6 +311,7 @@ try {
     await page.setViewportSize({ width: 1280, height: 720 });
     await activate(page, "nav-settings");
     await page.locator('[data-tv-focus="autoplay-next"]').waitFor();
+    assert.equal(await page.locator(".tv-page-heading > :not(h1)").count(), 0, "Settings heading must contain only its title");
     await screenshot(page, "settings-1280x720.png");
     return measurements;
   });

@@ -82,7 +82,7 @@ export default function SearchPage({ source, paused, onOpen }: { source: string;
   const visible = results.identity === identity ? results : initial(identity);
   const progress = status.channels.map(channel => `${channel.kind === "video" ? "影片" : "吃瓜"} ${Math.max(0, channel.nextPage - 1)}/${channel.pages ?? "?"} 页`).join(" · ");
   return <section className="tv-search" aria-label="首字母搜索">
-    <header><h1>搜索</h1><p>输入拼音首字母、英文或数字，例如 WDSJ、DSJ。</p></header>
+    <header><h1>搜索</h1></header>
     <div className="tv-search-layout">
       <div className="tv-search-input">
         <output className="tv-search-query" aria-live="polite" aria-label="当前搜索">{query || "选择字母开始"}</output>
@@ -93,7 +93,6 @@ export default function SearchPage({ source, paused, onOpen }: { source: string;
           <button data-tv-focus="search:delete" type="button" onClick={() => setQuery(value => value.slice(0, -1))}>删除</button>
           <button data-tv-focus="search:clear" type="button" onClick={() => setQuery("")}>清空</button>
         </div>
-        <p className="tv-muted">向右进入结果区</p>
       </div>
       <div className="tv-search-results">
         <div className="tv-search-status" role="status">

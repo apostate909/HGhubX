@@ -8,8 +8,17 @@ export type TvContent = ContentRef & {
   score?: number;
   description?: string;
   episodeCount?: number;
+  /** Missing marks imported identity-only records; ready also permits absent covers. */
+  metadataState?: "missing" | "ready";
 };
 export const contentKey = (content: ContentRef): string => `${content.kind}:${content.id}`;
+
+export function needsLibraryMetadata(content: TvContent): boolean {
+  if (content.metadataState) return content.metadataState === "missing";
+  // Recognize placeholders already imported by the first TV redesign build.
+  return !content.cover && !content.tags.length &&
+    content.title === `${content.kind === "video" ? "影片" : "视频"} ${content.id}`;
+}
 
 /** part is the episode number or the stable playback segment index as a string. */
 export type TvProgress = {
@@ -37,5 +46,6 @@ export function metadataOnly(content: TvContent): TvContent {
     ...(Number.isFinite(content.score) ? { score: content.score } : {}),
     ...(typeof content.description === "string" ? { description: content.description } : {}),
     ...(Number.isSafeInteger(content.episodeCount) ? { episodeCount: content.episodeCount } : {}),
+    ...(content.metadataState === "missing" || content.metadataState === "ready" ? { metadataState: content.metadataState } : {}),
   };
 }

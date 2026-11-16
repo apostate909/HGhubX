@@ -6,6 +6,7 @@ import { rankCard, videoCard } from "./catalogCards";
 import { indexMetadata } from "./search/catalog";
 import { useTv } from "./TvProvider";
 import { TvCard, TvStatus } from "./ui";
+import { LibraryCard } from "./LibraryCard";
 export default function HomePage({ onOpen, active = true }: { onOpen: (content: TvContent) => void; active?: boolean }) {
   const { source, sourceKey, library } = useTv(), { blockReason, revision } = useContentPreferences();
   const [rows, setRows] = useState<{title:string;items:TvContent[]}[]>([]), [error,setError] = useState(""), [busy,setBusy] = useState(true), [retry,setRetry] = useState(0);
@@ -25,10 +26,10 @@ export default function HomePage({ onOpen, active = true }: { onOpen: (content: 
     })(); return () => { current = false; };
   }, [sourceKey, source, retry, revision, active, identity]);
   const history = library.filter(entry => entry.progress).sort((a,b) => b.progress!.updatedAt - a.progress!.updatedAt).slice(0,15).map(entry => entry.content);
-  return <><header className="tv-page-heading"><p>HGhubX TV · 影院片库</p><h1>今晚，想看什么？</h1><span>方向键选片 · 确认查看详情</span></header>
+  return <><header className="tv-page-heading"><h1>首页</h1></header>
     <TvStatus busy={busy} error={error} onRetry={() => setRetry(r=>r+1)} />
     {[...(history.length ? [{title:"继续观看",items:history}] : []), ...rows].map(row => <section className="tv-shelf" key={row.title}><h2>{row.title}</h2><div className="tv-shelf-track" data-tv-region={`home-${row.title}`} data-tv-scroll-id={`home-${row.title}`}>
-      {row.items.filter(content=>row.title === "继续观看" || !blockReason(content.tags)).map(content=><TvCard key={contentKey(content)} content={content} onOpen={onOpen} placeholder={row.title === "继续观看"}/>)}
+      {row.items.filter(content=>row.title === "继续观看" || !blockReason(content.tags)).map(content=>row.title === "继续观看" ? <LibraryCard key={contentKey(content)} content={content} onOpen={onOpen} active={active}/> : <TvCard key={contentKey(content)} content={content} onOpen={onOpen}/>)}
     </div></section>)}
   </>;
 }

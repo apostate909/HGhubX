@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { contentKey, metadataOnly, type PendingMigrationIdentity, type TvContent, type TvLibraryEntry, type TvProgress } from "./model";
+import { contentKey, metadataOnly, needsLibraryMetadata, type PendingMigrationIdentity, type TvContent, type TvLibraryEntry, type TvProgress } from "./model";
 
 const DATABASE = "hghubx-tv-library-v1";
 const MIGRATION_KEY = "legacy-library-v1";
@@ -58,7 +58,7 @@ function legacyObject(raw: unknown): LegacyData {
   return raw as LegacyData;
 }
 function legacyContent(kind: "video" | "post", id: number): TvContent {
-  return { kind, id, title: kind === "video" ? `影片 ${id}` : `视频 ${id}`, cover: "", tags: [], hot: 0 };
+  return { kind, id, title: kind === "video" ? `影片 ${id}` : `视频 ${id}`, cover: "", tags: [], hot: 0, metadataState: "missing" };
 }
 
 function collectLegacy(identity?: PendingMigrationIdentity | null): TvLibraryEntry[] {
@@ -171,6 +171,30 @@ async function update(content: TvContent, mutate: (current: TvLibraryEntry) => T
 
 export const saveContent = (content: TvContent): Promise<void> => update(content, current => ({ ...current,
   ...(current.progress ? { progress: { ...current.progress, content: metadataOnly(content) } } : {}) }));
+
+/** Refresh only the metadata of a still-existing unresolved library record.
+ * Read inside this transaction: a late response must not recreate cleared
+ * history/favorites, overwrite newer details, or rewind a playback position.
+ */
+export async function hydrateLibraryContent(content: TvContent, isCurrent: () => boolean): Promise<boolean> {
+  if (!isCurrent()) return false;
+  const clean = metadataOnly({ ...content, metadataState: "ready" }), key = contentKey(clean);
+  const db = await database();
+  if (!isCurrent()) return false;
+  const transaction = db.transaction("library", "readwrite"), completed = done(transaction);
+  const store = transaction.objectStore("library"), request = store.get(key);
+  let saved = false;
+  request.onsuccess = () => {
+    const existing = request.result as TvLibraryEntry | undefined;
+    if (!isCurrent() || !existing || (!existing.favorite && !existing.progress) || !needsLibraryMetadata(existing.content)) return;
+    store.put({ ...existing, content: clean,
+      ...(existing.progress ? { progress: { ...existing.progress, content: clean } } : {}) });
+    saved = true;
+  };
+  await completed;
+  if (saved) changed();
+  return saved;
+}
 export const setFavorite = (content: TvContent, favorite: boolean): Promise<void> => update(content, current => ({ ...current, favorite }));
 
 export function saveProgress(content: TvContent, progress: TvProgress): Promise<void> {

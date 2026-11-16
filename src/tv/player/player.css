@@ -7,7 +7,6 @@
 .tv-detail-cover img { width: 100%; height: 100%; object-fit: cover; }
 .tv-detail-cover-wide { flex-basis: 14.7222rem; width: 14.7222rem; height: 8.8889rem; }
 .tv-detail-copy { flex: 1; min-width: 0; }
-.tv-detail-eyebrow { color: #7ed8ff; margin: 0 0 0.3889rem; font-size: 0.8889rem; letter-spacing: 0.1111rem; }
 .tv-detail-meta { font-size: 0.9444rem; color: #b2c4d3; }
 .tv-detail-description { margin: 0.6667rem 0; max-width: 34.4444rem; line-height: 1.6; font-size: 1rem; color: #d4e1eb; white-space: pre-line; overflow-wrap: anywhere; }
 .tv-detail-tags { display: flex; flex-wrap: wrap; gap: 0.4444rem; margin: 0.7778rem 0; }
@@ -32,7 +31,6 @@
 .tv-player-progress-track { height: 0.2778rem; overflow: hidden; background: #5c6c78; border-radius: 0.4444rem; }
 .tv-player-progress-track > span { display: block; height: 100%; background: #7bd6ff; border-radius: inherit; }
 .tv-player-progress-time { text-align: right; font-size: 0.8889rem; font-variant-numeric: tabular-nums; }
-.tv-player-hint { margin: 0.7778rem 0 0; color: #bdd0df; font-size: 0.8889rem; }
 .tv-player-seek-hint { color: #a3e6ff; font-size: 1.0556rem; }
 .tv-player-loading { position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%); padding: 0.6667rem 1.2222rem; background: rgba(9, 24, 36, .9); border-radius: 0.5556rem; font-size: 1.1111rem; }
 .tv-player-message { position: absolute; top: 16%; left: max(var(--tv-inset-x, 3vw), 1.5556rem); right: max(var(--tv-inset-x, 3vw), 1.5556rem); max-width: 37.7778rem; margin: auto; padding: 1.3333rem; background: #102233; border: 0.0556rem solid #344b60; border-radius: 0.7778rem; }

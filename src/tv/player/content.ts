@@ -6,7 +6,7 @@ export type TvStreams = { main: string; hevc?: string };
 
 export function detailContent(base: TvContent, value: Detail | Post): TvContent {
   return {
-    kind: base.kind, id: base.id, title: value.title || base.title,
+    kind: base.kind, id: base.id, title: value.title || base.title, metadataState: "ready",
     cover: value.cover || base.cover, tags: Array.isArray(value.tags) ? value.tags : [],
     description: base.kind === "video" ? (value as Detail).description : (value as Post).desc,
     hot: base.kind === "video" ? (value as Detail).counts?.hot ?? base.hot : (value as Post).hot ?? (value as Post).counts?.hot ?? base.hot,

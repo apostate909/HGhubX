@@ -1,5 +1,5 @@
-import { clearHistory, initializeLibrary, listLibrary, saveProgress, setFavorite } from "../src/tv/library";
-import { contentKey, type TvContent } from "../src/tv/model";
+import { clearHistory, hydrateLibraryContent, initializeLibrary, listLibrary, saveProgress, setFavorite } from "../src/tv/library";
+import { contentKey, needsLibraryMetadata, type TvContent } from "../src/tv/model";
 
 let passed=0;
 function assert(condition: unknown, message: string): asserts condition {
@@ -89,5 +89,39 @@ export async function runTvLibraryTests() {
   assert(!JSON.stringify(saved).includes("temporary.fixture.invalid"),"temporary playback URLs must never reach persistent metadata");
   await rejects(()=>saveProgress(post,{...progress,key:"video:7"}),"cross-kind progress identity must reject");
   assert(localStorage.getItem("hghubx_app_v1")===guestRaw&&localStorage.getItem("hghubx_accounts_v1")===accountRaw,"migration and edits retain original legacy data");
-  return {passed,scenarios:["atomic-quota-rollback","exact-account-selection","kind-id-isolation","whole-row-newest-history","ack-retry-idempotence","clear-history-marker","segment-progress","url-exclusion"]};
+  // Metadata fills are separate from migration, and never write favorite/progress
+  // fields from the stale snapshot that originally scheduled the request.
+  const missing: TvContent = { kind:"video", id:20, title:"影片 20", cover:"", tags:[], hot:0, metadataState:"missing" };
+  const filled: TvContent = { ...missing, title:"自动补全的作品", cover:"https://cover.fixture.invalid/20", tags:["剧情"], hot:18, metadataState:"ready" };
+  const legacyPlaceholder: TvContent = { kind:"video", id:21, title:"影片 21", cover:"", tags:[], hot:0 };
+  assert(needsLibraryMetadata(legacyPlaceholder), "already-migrated placeholders without a marker need enrichment");
+  assert(!needsLibraryMetadata({...legacyPlaceholder, metadataState:"ready"}), "explicitly resolved titles resembling a placeholder stay resolved");
+  await setFavorite(missing,true);
+  await saveProgress(missing,{key:"video:20",content:missing,part:"3",seconds:44,duration:120,updatedAt:500});
+  assert(await hydrateLibraryContent(filled,()=>true), "active unresolved library item must accept metadata");
+  const hydrated=(await listLibrary()).find(row=>row.key==="video:20")!;
+  assert(hydrated.favorite && hydrated.content.title===filled.title && hydrated.content.cover===filled.cover, "metadata fills preserve collection state");
+  assert(hydrated.progress?.part==="3"&&hydrated.progress.seconds===44&&hydrated.progress.duration===120&&hydrated.progress.updatedAt===500,
+    "metadata fills preserve the entire progress row");
+  assert(hydrated.progress.content.title===filled.title, "progress metadata refreshes alongside card metadata");
+  assert(!await hydrateLibraryContent({...filled,title:"旧请求的晚到信息"},()=>true), "late enrichment cannot replace metadata already resolved elsewhere");
+  assert((await listLibrary()).find(row=>row.key==="video:20")?.content.title===filled.title, "newer metadata survives late response");
+
+  await setFavorite(legacyPlaceholder,true);
+  let current=true;
+  const stale=hydrateLibraryContent({...legacyPlaceholder,title:"过期来源",metadataState:"ready"},()=>current);
+  current=false;
+  assert(!await stale, "source or preference invalidation cancels a pending metadata write");
+  assert(needsLibraryMetadata((await listLibrary()).find(row=>row.key==="video:21")!.content), "invalidated write leaves unresolved metadata for a future retry");
+  await setFavorite(legacyPlaceholder,false);
+  assert(!await hydrateLibraryContent({...legacyPlaceholder,title:"已取消收藏",metadataState:"ready"},()=>true), "cancelled favorite must not be resurrected by hydration");
+
+  const historyOnly:TvContent={kind:"video",id:22,title:"影片 22",cover:"",tags:[],hot:0,metadataState:"missing"};
+  await saveProgress(historyOnly,{key:"video:22",content:historyOnly,part:"2",seconds:8,duration:60,updatedAt:600});
+  let release!:()=>void;
+  const deferred=new Promise<void>(resolve=>{release=resolve;}).then(()=>hydrateLibraryContent({...historyOnly,title:"晚到的详情",metadataState:"ready"},()=>true));
+  await clearHistory(); release();
+  assert(!await deferred, "cleared history must not be reinserted when detail arrives later");
+  assert(!(await listLibrary()).some(row=>row.key==="video:22"||row.key==="video:21"), "removed records stay removed after late metadata");
+  return {passed,scenarios:["atomic-quota-rollback","exact-account-selection","kind-id-isolation","whole-row-newest-history","ack-retry-idempotence","clear-history-marker","segment-progress","url-exclusion","metadata-hydration","preserve-progress-favorites","late-hydration-invalidation","no-deletion-resurrection"]};
 }

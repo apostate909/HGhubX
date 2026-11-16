@@ -82,7 +82,7 @@ export default function BrowsePage({ onOpen, active=true }: { onOpen: (content: 
     }
     setRequest(r=>({...r,retry:r.retry+1}));
   };
-  return <><header className="tv-page-heading"><h1>浏览</h1><p>按频道、专题或标签找片</p></header>
+  return <><header className="tv-page-heading"><h1>浏览</h1></header>
     <div className="tv-tabs" data-tv-region="browse-channels">{channels.map(c=><button key={c.id} data-tv-focus={`channel-${c.id}`} aria-pressed={channel===c.id} onClick={()=>{setChannel(c.id);setSelection("");}}>{c.label}</button>)}</div>
     {selection&&<button data-tv-focus="browse-up" onClick={()=>setSelection("")}>返回{channel==="tags"?"标签":"专题"}</button>}
     <TvStatus busy={busy} error={error} onRetry={()=>void retry()}/>

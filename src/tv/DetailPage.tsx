@@ -99,7 +99,6 @@ export default function DetailPage({ content, sourceKey, progress, favorite, onF
           {displayed && item.cover ? <img src={cover(item.cover)} alt={`${item.title}封面`} /> : <span>HGhubX</span>}
         </div>
         <div className="tv-detail-copy">
-          <p className="tv-detail-eyebrow">{content.kind === "post" ? "吃瓜视频" : "影院片库"}</p>
           <h1>{item.title}</h1>
           <p className="tv-detail-meta">{item.score ? `${item.score.toFixed(1)} 分 · ` : ""}{parts.length ? `${parts.length} ${content.kind === "post" ? "个视频分段" : "集"}` : displayed ? "暂无可播放剧集" : "正在读取详情"}</p>
           {item.description && <p className="tv-detail-description">{item.description}</p>}
