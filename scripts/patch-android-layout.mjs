@@ -75,18 +75,22 @@ class MainActivity : TauriActivity() {
           WindowInsetsCompat.Type.displayCutout() or
           WindowInsetsCompat.Type.ime()
       )
-      // Some TV boxes and car head units draw a fixed system dock without
-      // reporting it as a navigation bar. Keep a small fixed fallback only for
-      // those device classes, never for ordinary phones.
+      // Some TV boxes and car head units draw fixed status/dock chrome without
+      // reporting it as a system bar. Reserve a proportional fallback only for
+      // those device classes; reported insets still win when they are larger.
       val configuration = resources.configuration
       val mode = configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
       val largeLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
         configuration.screenWidthDp >= 960
-      val fixedDock = mode == Configuration.UI_MODE_TYPE_TELEVISION ||
-        mode == Configuration.UI_MODE_TYPE_CAR || largeLandscape
+      val reference = configuration.screenHeightDp.toFloat()
       val density = resources.displayMetrics.density
-      val top = if (fixedDock) maxOf(safe.top, (16 * density).toInt()) else safe.top
-      val bottom = if (fixedDock) maxOf(safe.bottom, (32 * density).toInt()) else safe.bottom
+      val fallback = when (mode) {
+        Configuration.UI_MODE_TYPE_CAR -> 0.04f to 0.14f
+        Configuration.UI_MODE_TYPE_TELEVISION -> 0.025f to 0.05f
+        else -> if (largeLandscape) (0.025f to 0.08f) else (0f to 0f)
+      }
+      val top = maxOf(safe.top, (reference * fallback.first * density).toInt())
+      val bottom = maxOf(safe.bottom, (reference * fallback.second * density).toInt())
       view.setPadding(safe.left, top, safe.right, bottom)
       WindowInsetsCompat.CONSUMED
     }

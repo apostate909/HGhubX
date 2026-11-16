@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The optional tauri.tv.conf.json selects the TV frontend and Android package.
-// Standard builds do not load this hook. The TV packaging branch copies this
-// config to tauri.android.conf.json before the unchanged workflow runs init.
+// Standard builds do not load this hook. The shared Android workflow copies
+// this config to tauri.android.conf.json before it runs `tauri android init`.
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
