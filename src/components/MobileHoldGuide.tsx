@@ -85,14 +85,14 @@ function GuideContent({ target, bottomInset, onClose, rotation = 0 }: Omit<Props
           <rect width={layout.width} height={layout.height} fill="white" />
           <rect x={layout.left + bounds.left} y={layout.top + bounds.top} width={bounds.size} height={bounds.size} fill="black" />
         </mask></defs>
-        <rect width={layout.width} height={layout.height} fill="rgb(7 11 21 / .76)" mask={`url(#${maskId})`} />
+        <rect width={layout.width} height={layout.height} fill="#070b15" fillOpacity=".76" mask={`url(#${maskId})`} />
         <g mask={`url(#${maskId})`}>
-          <path d={`M ${layout.left} ${layout.top} H ${layout.left + layout.targetWidth} V ${layout.top + layout.targetHeight} Z`} fill="rgb(112 230 220 / .12)" />
-          <path d={`M ${layout.left} ${layout.top} V ${layout.top + layout.targetHeight} H ${layout.left + layout.targetWidth} Z`} fill="rgb(249 199 124 / .12)" />
-          <path d={`M ${layout.left} ${layout.top} L ${layout.left + layout.targetWidth} ${layout.top + layout.targetHeight}`} stroke="rgb(255 255 255 / .3)" strokeWidth="1" strokeDasharray="5 7" />
+          <path d={`M ${layout.left} ${layout.top} H ${layout.left + layout.targetWidth} V ${layout.top + layout.targetHeight} Z`} fill="#70e6dc" fillOpacity=".12" />
+          <path d={`M ${layout.left} ${layout.top} V ${layout.top + layout.targetHeight} H ${layout.left + layout.targetWidth} Z`} fill="#f9c77c" fillOpacity=".12" />
+          <path d={`M ${layout.left} ${layout.top} L ${layout.left + layout.targetWidth} ${layout.top + layout.targetHeight}`} stroke="white" strokeOpacity=".3" strokeWidth="1" strokeDasharray="5 7" />
         </g>
         <rect className="mobile-hold-guide-square" x={layout.left + bounds.left} y={layout.top + bounds.top}
-          width={bounds.size} height={bounds.size} fill="rgb(15 19 30 / .42)" stroke="white" strokeWidth="2" />
+          width={bounds.size} height={bounds.size} fill="#0f131e" fillOpacity=".42" stroke="white" strokeWidth="2" />
       </svg>
       <div className="mobile-hold-guide-heading">
         <span>长按手势</span>

@@ -1,4 +1,4 @@
-/* Remote mode starts with an Android direction key; pointer input turns it off. */
+/* The standalone TV edition starts in remote mode and keeps it on. */
 html[data-tv-navigation="true"] button:focus,
 html[data-tv-navigation="true"] input:focus,
 html[data-tv-navigation="true"] textarea:focus,
@@ -43,3 +43,49 @@ html[data-tv-navigation="true"] .hg-agreement-check:focus-within {
   font-weight:600;
 }
 .tv-playback-controls .ios-button:disabled { opacity:.35; }
+
+/* A stable inset ring stays visible inside clipped cards and rounded panels.
+   Never enlarge focused cards: it moves neighbouring targets on low-end TVs. */
+html[data-app-edition="tv"][data-tv-navigation="true"] button:focus,
+html[data-app-edition="tv"][data-tv-navigation="true"] input:focus,
+html[data-app-edition="tv"][data-tv-navigation="true"] textarea:focus,
+html[data-app-edition="tv"][data-tv-navigation="true"] select:focus,
+html[data-app-edition="tv"][data-tv-navigation="true"] a:focus,
+html[data-app-edition="tv"][data-tv-navigation="true"] summary:focus,
+html[data-app-edition="tv"][data-tv-navigation="true"] [tabindex="0"]:focus {
+  outline:4px solid #8de8ff !important;
+  outline-offset:-4px !important;
+  box-shadow:inset 0 0 0 7px rgba(0,0,0,.78) !important;
+}
+html[data-app-edition="tv"] button:not(.ios-overlay-backdrop),
+html[data-app-edition="tv"] summary,
+html[data-app-edition="tv"] input:not([type="checkbox"]):not([type="radio"]),
+html[data-app-edition="tv"] select {
+  min-height:48px;
+  min-width:48px;
+}
+html[data-app-edition="tv"] .hg-agreement-check {
+  min-height:48px;
+  padding:10px;
+}
+html[data-app-edition="tv"] .hg-agreement-check input {
+  width:24px;
+  height:24px;
+  flex-shrink:0;
+}
+html[data-app-edition="tv"] .tv-playback-controls .ios-button {
+  min-height:48px;
+  font-size:16px;
+}
+html[data-app-edition="tv"] [tabindex="0"],
+html[data-app-edition="tv"] button,
+html[data-app-edition="tv"] input,
+html[data-app-edition="tv"] summary {
+  scroll-margin:12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-app-edition="tv"] button,
+  html[data-app-edition="tv"] [tabindex="0"] {
+    scroll-behavior:auto;
+  }
+}

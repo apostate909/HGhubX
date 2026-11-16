@@ -23,6 +23,8 @@ import MobileHoldGuide from "./MobileHoldGuide";
 import { getHoldPoint, getHoldZone, isInsideHoldTarget, HOLD_DELAY_MS, type HoldRect, type HoldRotation, type HoldZone } from "../mobileHold";
 import { useMobileHoldGuide } from "../useMobileHoldGuide";
 import { isTvNavigationActive, useTvNavigation } from "../tvNavigation";
+import { isTv } from "../edition";
+import "../styles/tv-player.css";
 import {
   IBack, IBoltF, IChevR, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText, IHeart, IHeartF, IMore,
   ILink, IList, ILockF, IPauseF, IPlayF, ISearch, IStar, IStarF, IVertSwap, IVol, IVolMute,
@@ -47,7 +49,7 @@ type Props = {
 export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind = "video", active, bottomInset, onBack, onNearEnd, onBlocked, startEp, startTime }: Props) {
   const store = useStore();
   const { isLiked, isFav, setLiked, setCollected, setFollowing, actionPending, accountScope, muted, setMuted, volume, setVolume, toast, addHistory, user, setLoginOpen, swipeEp, setSwipeEp, preferHevc, setPreferHevc } = store;
-  const isDesktop = !isMobile;
+  const isDesktop = !isMobile || isTv;
   const tvNavigation = useTvNavigation();
   const holdGuide = useMobileHoldGuide();
   const contentPreferences = useContentPreferences();
@@ -98,6 +100,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
   const boxRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<VideoHandle>(null);
+  const tvPanelRef = useRef<HTMLDivElement>(null);
   const holdTargetRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(() => ({ id: videoIds[startIndex], index: startIndex }));
   const index = useMemo(() => {
@@ -161,7 +164,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     setIdle(false);
     window.clearTimeout(idleTimer.current);
     idleTimer.current = window.setTimeout(() => {
-      if (isTvNavigationActive()) return;
+      if (isTv || isTvNavigationActive()) return;
       // Keyboard users must keep seeing the focused control/menu.
       if (!boxRef.current?.parentElement?.contains(document.activeElement) || !document.activeElement?.closest(".desktop-controls")) setIdle(true);
     }, 2800);
@@ -266,6 +269,9 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   // 等播放画面就绪再提示，启动动画/协议、加载失败和其他面板不叠加教程。
   const showHoldGuide = !isDesktop && !holdGuide.seen && active && allowed
     && !!playUrl && duration > 0 && !err && !panel && !tagMenu && !controlsLocked;
+  const playbackActive = active && allowed && !tagMenu && !showHoldGuide;
+  const keepAliveContext = useRef({ key: measurementKey, active: playbackActive });
+  keepAliveContext.current = { key: measurementKey, active: playbackActive };
   useEffect(() => {
     const retry = () => {
       setErr("");
@@ -410,7 +416,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     const el = boxRef.current;
     if (!el) return;
     const next = Math.max(0, Math.min(effectiveVideoIds.length - 1, index + delta));
-    if (tvNavigation) {
+    if (isTv || tvNavigation) {
       window.clearTimeout(swipeTimer.current);
       // Immersive mode hides other sections, so it has no scroll offset to seek.
       // Remote activation changes the anchored item directly in either mode.
@@ -608,14 +614,33 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   }, []);
 
   /* 键盘 */
+  const seekRelative = (delta: number, source = "keyboard_shortcut") => {
+    const current = videoRef.current?.el()?.currentTime ?? 0;
+    videoRef.current?.seek(Math.max(0, current + delta), source);
+  };
   useEffect(() => {
     if (!active || !allowed || controlsLocked || showHoldGuide) return;
-    const seekRelative = (delta: number) => {
-      const current = videoRef.current?.el()?.currentTime ?? 0;
-      videoRef.current?.seek(Math.max(0, current + delta), "keyboard_shortcut");
-    };
     const fn = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
+      if (e.defaultPrevented || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (isTv) {
+        // Modal UI owns the remote; hidden players never consume media keys.
+        const modalOpen = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]'))
+          .some(element => !element.closest('[inert], [aria-hidden="true"]') && element.getClientRects().length > 0);
+        if (tagMenu || panel || modalOpen) return;
+        if (["MediaPlayPause", "MediaPlay", "MediaPause", "MediaFastForward", "MediaRewind"].includes(e.key)) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.repeat && !["MediaFastForward", "MediaRewind"].includes(e.key)) return;
+          if (e.key === "MediaPlayPause") videoRef.current?.toggle();
+          else if (e.key === "MediaPlay") videoRef.current?.play();
+          else if (e.key === "MediaPause") videoRef.current?.pause();
+          else seekRelative(e.key === "MediaRewind" ? -10 : 10, "tv_media_key");
+          wake();
+          return;
+        }
+        if ([" ", "Enter"].includes(e.key) && t?.closest("button, summary, a[href]")) return;
+      }
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       if (panel) { if (e.key === "Escape") setPanel(null); return; }
       switch (e.key) {
@@ -625,7 +650,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         case "ArrowLeft": e.preventDefault(); seekRelative(-5); break;
         case "ArrowRight": e.preventDefault(); seekRelative(5); break;
         case "f": case "F": toggleFull(); break;
-        case "t": case "T": setTheater((v) => !v); break;
+        case "t": case "T": if (!isTv) setTheater((v) => !v); break;
         case "m": case "M": setMuted((v) => !v); break;
         case "l": case "L": onLike(); break;
         case "s": case "S": onFav(); break;
@@ -637,7 +662,24 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, allowed, controlsLocked, showHoldGuide, panel, index, stepDir, accountScope, curEp, kind, liked, collected, likePending, collectPending]);
+  }, [active, allowed, controlsLocked, showHoldGuide, tagMenu, panel, index, stepDir, accountScope, curEp, kind, liked, collected, likePending, collectPending, fs]);
+
+  useEffect(() => {
+    if (!isTv || !active || !panel || tagMenu) return;
+    const frame = requestAnimationFrame(() => {
+      const selected = tvPanelRef.current?.querySelector<HTMLButtonElement>('button[aria-current="true"]')
+        || tvPanelRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)');
+      selected?.focus({ preventScroll: true });
+      const scroll = selected?.closest<HTMLElement>(".scroll-y");
+      if (selected && scroll) {
+        const item = selected.getBoundingClientRect();
+        const box = scroll.getBoundingClientRect();
+        if (item.top < box.top) scroll.scrollTop -= box.top - item.top + 8;
+        else if (item.bottom > box.bottom) scroll.scrollTop += item.bottom - box.bottom + 8;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active, panel, tagMenu]);
 
   /* 安卓返回键：面板打开时先关面板 */
   useEffect(() => {
@@ -653,6 +695,12 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   }, []);
 
   const toggleFull = () => {
+    if (isTv) {
+      setClean(false);
+      setFs(!fs);
+      wake();
+      return;
+    }
     const el = boxRef.current?.parentElement;
     if (!el) return;
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -900,14 +948,19 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     lockArmedRef.current = false;
   }, [playKey]);
 
-  /* 进出全屏：iOS 会在这时把播放打断，过渡期多补几次 play() */
+  /* Recover platform interruptions without replacing an explicit pause intent. */
   const keepAlive = useCallback(() => {
     for (const t of keepAliveTimers.current) window.clearTimeout(t);
     keepAliveTimers.current = [];
+    const expected = keepAliveContext.current;
+    const handle = videoRef.current;
+    const video = handle?.el();
+    if (!expected.active || !handle || !video) return;
     for (const delay of [50, 150, 300, 500, 800, 1200]) {
       keepAliveTimers.current.push(window.setTimeout(() => {
-        const v = videoRef.current?.el();
-        if (v && v.paused) videoRef.current?.play();
+        const current = keepAliveContext.current;
+        if (!current.active || current.key !== expected.key || videoRef.current !== handle || handle.el() !== video) return;
+        if (video.paused) handle.resumeIfWanted();
       }, delay) as unknown as number);
     }
   }, []);
@@ -1005,10 +1058,10 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     };
   }, [fs, vpLandscape, index]);
 
-  useEffect(() => () => {
+  useLayoutEffect(() => () => {
     for (const t of keepAliveTimers.current) window.clearTimeout(t);
     keepAliveTimers.current = [];
-  }, []);
+  }, [measurementKey, playbackActive]);
 
   const lockControls = () => { setPanel(null); setControlsLocked(true); };
 
@@ -1174,7 +1227,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
   return (
     <div
-      className={`hg-player-ui ${rotated ? "fs-landscape" : (!isDesktop && fs ? "fs-immersive" : "absolute inset-0")} overflow-hidden bg-black player-root ${controlsLocked ? "is-locked" : ""} ${isDesktop ? "player-surface" : ""} ${theater ? "is-theater" : ""} ${isDesktop && idle ? "is-idle" : ""}`}
+      className={`hg-player-ui ${rotated ? "fs-landscape" : (!isDesktop && fs ? "fs-immersive" : "absolute inset-0")} overflow-hidden bg-black player-root ${controlsLocked ? "is-locked" : ""} ${isDesktop ? "player-surface" : ""} ${isTv ? "tv-feed" : ""} ${theater ? "is-theater" : ""} ${isDesktop && idle ? "is-idle" : ""}`}
+      data-tv-panel-open={isTv && !!panel || undefined}
       data-clean={clean}
       inert={!active || undefined}
       aria-hidden={!active || undefined}
@@ -1191,7 +1245,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
       <div ref={boxRef} onScroll={onScroll}
         className={`absolute inset-y-0 left-0 no-bar ${fs ? "overflow-hidden" : "overflow-y-scroll snap-y snap-mandatory overscroll-y-contain"}`}
-        style={{ right: isDesktop && panel ? 372 : 0, transition: "right .3s cubic-bezier(.2,0,0,1)" }}>
+        style={{ right: isDesktop && panel ? (isTv ? "var(--tv-panel-width)" : 372) : 0, transition: "right .3s cubic-bezier(.2,0,0,1)" }}>
         {effectiveVideoIds.map((vid, i) => {
           const isActive = i === index;
           const sectionClass = `${fs && !isActive ? "hidden" : "relative w-full h-full"} snap-start snap-always overflow-hidden`;
@@ -1210,8 +1264,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                   className="absolute inset-0" style={{ touchAction: swipeEp ? "none" : "pan-y" }}
                   onPointerDown={onDown} onPointerMove={onMove} onPointerUp={(e) => onUp(false, e)} onPointerCancel={(e) => onUp(true, e)} onLostPointerCapture={(e) => onUp(true, e)}>
                 <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, transform: isDesktop ? undefined : `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.s})`, transformOrigin: "center center", transition: isDesktop || zoom.g ? "none" : "transform .18s ease-out" }}>
-                <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay active={active && !tagMenu && !showHoldGuide} muted={muted}
-                  diagnosticContext={{ active: active && !tagMenu && !showHoldGuide, view: mode, kind, video_id: curId, episode: curEp }}
+                <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay active={playbackActive} muted={muted}
+                  diagnosticContext={{ active: playbackActive, view: mode, kind, video_id: curId, episode: curEp }}
                   volume={volume} rate={effRate}
                   measurementKey={measurementKey}
                   fit={isDesktop ? "contain" : landscapeVideo ? (fs || vpLandscape ? "contain" : portraitFit) : (!videoSize.w || !videoSize.h || vpLandscape ? "contain" : "cover")}
@@ -1257,7 +1311,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               )}
 
               {/* 顶部 */}
-              {!fs && !clean && mode === "context" ? (
+              {!isTv && !fs && !clean && mode === "context" ? (
                 isDesktop ? (
                   <div className="desktop-context-header">
                     <Button onClick={onBack} aria-label="返回"><IBack size={17} /></Button>
@@ -1377,9 +1431,9 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               )}
 
               {/* 右侧操作栏（桌面） */}
-              {!fs && !clean && isDesktop && (
+              {(isTv || (!fs && !clean)) && isDesktop && (
               <div className="absolute z-20 flex flex-col items-center desktop-social">
-                <div className="desktop-browse-inline">
+                {!isTv && <div className="desktop-browse-inline">
                   <Button onClick={() => stepDir(-1)} disabled={!canStep(-1)} aria-label="上一个" title="上一个 ↑">
                     <IChevronUp size={19} strokeWidth={1.8} />
                   </Button>
@@ -1387,7 +1441,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                     <IChevronDown size={19} strokeWidth={1.8} />
                   </Button>
                     <small>{String(index + 1).padStart(2, "0")} / {String(effectiveVideoIds.length).padStart(2, "0")}</small>
-                </div>
+                </div>}
 
                 {kind === "video" && (
                   <>
@@ -1408,10 +1462,10 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                       <span className="text-[12px] text-white/90 tabular-nums">{fmt(meta.collect)}</span>
                     </Button>
 
-                    <Button onClick={() => setPanel("episodes")} aria-label="选集" className="flex flex-col items-center gap-1 pressable">
+                    {!isTv && <Button onClick={() => setPanel("episodes")} aria-label="选集" className="flex flex-col items-center gap-1 pressable">
                       <IList size={26} className="text-white tsh" />
                       <span className="text-[12px] text-white/90">选集</span>
-                    </Button>
+                    </Button>}
                   </>
                 )}
 
@@ -1423,7 +1477,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
               )}
 
               {/* 桌面：左下信息 */}
-              {!fs && !clean && isDesktop && (
+              {(isTv || (!fs && !clean)) && isDesktop && (
               <div className="desktop-video-meta">
                 <div className="flex items-center gap-2">
                   <span className="text-[16px] font-bold text-white tsh truncate">@{meta.author}</span>
@@ -1541,6 +1595,39 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         })}
       </div>
 
+      {isTv && active && allowed && !controlsLocked && !panel && !tagMenu && (
+        <div className="tv-player-toolbar">
+          <div className="tv-player-heading">
+            {onBack && <Button onClick={onBack} aria-label="返回" className="tv-player-back"><IBack size={20} /></Button>}
+            <span className="tv-player-title">{meta.title || title || "正在播放"}</span>
+            <span className="tv-player-position">{episodes.length ? `第 ${curEp} / ${episodes.length} 集` : `${index + 1} / ${effectiveVideoIds.length}`}</span>
+            <Button onClick={toggleFull} aria-label={fs ? "退出全屏" : "全屏"} className="tv-player-fullscreen">
+              {fs ? <ICompress size={20} /> : <IExpand size={20} />}
+            </Button>
+          </div>
+          <div className="tv-player-actions" role="group" aria-label="遥控器播放控制">
+            <Button onClick={() => {
+              const previous = episodes.find(episode => episode.ep_num === curEp - 1);
+              if (previous) pickEp(previous.ep_num); else go(-1);
+            }} disabled={!episodes.some(episode => episode.ep_num === curEp - 1) && index <= 0}>
+              <IChevronUp size={18} /><span>{episodes.some(episode => episode.ep_num === curEp - 1) ? "上一集" : "上一部"}</span>
+            </Button>
+            <Button onClick={() => seekRelative(-10, "tv_button")} disabled={!playUrl || !!err} aria-label="后退 10 秒">−10 秒</Button>
+            <Button onClick={() => videoRef.current?.toggle()} disabled={!playUrl || !!err} aria-label={paused ? "播放" : "暂停"} data-tv-initial>
+              {paused ? <IPlayF size={20} /> : <IPauseF size={20} />}<span>{paused ? "播放" : "暂停"}</span>
+            </Button>
+            <Button onClick={() => seekRelative(10, "tv_button")} disabled={!playUrl || !!err} aria-label="前进 10 秒">+10 秒</Button>
+            {kind === "video" && <Button onClick={() => setPanel("episodes")} aria-label="选集"><IList size={20} /><span>选集</span></Button>}
+            <Button onClick={() => {
+              const next = episodes.find(episode => episode.ep_num === curEp + 1);
+              if (next) pickEp(next.ep_num); else go(1);
+            }} disabled={!episodes.some(episode => episode.ep_num === curEp + 1) && index >= effectiveVideoIds.length - 1}>
+              <span>{episodes.some(episode => episode.ep_num === curEp + 1) ? "下一集" : "下一部"}</span><IChevronDown size={18} />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Android remote controls stay on the left, clear of the social rail. */}
       {tvNavigation && !isDesktop && active && allowed && !controlsLocked && !panel && !tagMenu && !showHoldGuide && (
         <div className="tv-playback-controls" role="group" aria-label="遥控器播放控制">
@@ -1561,14 +1648,14 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         <PlayerControls
           paused={paused} duration={duration} rate={rate}
           clock={playbackClock}
-          muted={muted} volume={volume} theater={theater} fullscreen={fullscreen}
-          visible={active && !idle}
+          muted={muted} volume={volume} theater={theater} fullscreen={isTv ? fs : fullscreen}
+          visible={active && (isTv || !idle)}
           seekEnabled={active && !controlsLocked}
           seekKey={playKey}
           nextDisabled={!episodes.some((e) => e.ep_num === curEp + 1) && index >= effectiveVideoIds.length - 1}
           nextTitle={episodes.some((e) => e.ep_num === curEp + 1) ? "下一集 E" : "下一部 ↓"}
           swipeEp={swipeEp}
-          onToggleSwipe={() => { setSwipeEp(!swipeEp); toast(swipeEp ? "上下划切集已关闭" : "上下划切集已开启"); }}
+          onToggleSwipe={isTv ? undefined : () => { setSwipeEp(!swipeEp); toast(swipeEp ? "上下划切集已关闭" : "上下划切集已开启"); }}
           onToggle={() => videoRef.current?.toggle()}
           onSeek={(t, source) => { videoRef.current?.seek(t, source); playbackClock.publish(t); }}
           onSeekInteraction={(phase, input, target, pointerTarget) => videoRef.current?.trace(`seek.input.${phase}`, { input, target, pointer_target: pointerTarget })}
@@ -1577,9 +1664,9 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
           onVolume={(v) => setVolume(v)}
           onPip={togglePip}
           onLock={lockControls}
-          onTheater={() => setTheater((v) => !v)}
+          onTheater={isTv ? undefined : () => setTheater((v) => !v)}
           onFullscreen={toggleFull}
-          onNext={() => {
+          onNext={isTv ? undefined : () => {
             const nx = episodes.find((e) => e.ep_num === curEp + 1);
             if (nx) pickEp(nx.ep_num);
             else go(1);
@@ -1674,12 +1761,16 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
       {/* 选集 / 评论：桌面停靠在右侧（画面让位），移动端底部弹层 */}
       {isDesktop ? (
-        <div className={`desktop-dock-panel ${panel ? "is-open" : ""}`}>
+        <div ref={tvPanelRef} className={`desktop-dock-panel ${panel ? "is-open" : ""}`}
+          data-tv-active-scope={isTv && active && !!panel && !tagMenu ? "true" : undefined}
+          role={isTv && panel ? "region" : undefined} aria-label={isTv && panel ? "播放侧栏" : undefined}>
           <div className="desktop-dock-inner">
             {panel === "detail" ? detailBody(() => setPanel(null)) : panel === "episodes" ? (
               <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} />
             ) : panel === "comments" ? (
               <CommentsPanel videoId={curId} ep={curEp} total={meta.comment} kind={kind} onClose={() => setPanel(null)} />
+            ) : panel === "article" ? (
+              <ArticlePanel title={meta.title} html={articleHtml} cover={meta.cover} hot={post?.hot} onClose={() => setPanel(null)} />
             ) : null}
           </div>
         </div>

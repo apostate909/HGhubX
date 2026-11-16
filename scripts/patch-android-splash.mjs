@@ -29,7 +29,16 @@ if (!existsSync(res)) {
 
 // 与 src/styles/launch.css 的 --launch-bg、index.html 首帧背景一致
 const BRAND = "#071218";
-const THEME = "Theme.hghubx";
+// Android product variants may have a different generated theme. Read the
+// actual manifest reference instead of binding the patch to a product name.
+const manifestPath = join(res, "..", "AndroidManifest.xml");
+const manifest = readFileSync(manifestPath, "utf8").replace(/<!--[\s\S]*?-->/g, "");
+const application = manifest.match(/<application\b[^>]*>/g);
+if (application?.length !== 1) fail(manifestPath, "缺少唯一的 application");
+const theme = application[0].match(/\bandroid:theme\s*=\s*["']@style\/([^"']+)["']/);
+if (!theme) fail(manifestPath, "application 缺少 @style 主题引用");
+const THEME = theme[1];
+const themePattern = THEME.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const valuesDir = join(res, "values");
 const colorsPath = join(valuesDir, "colors.xml");
 const pending = new Map();
@@ -71,8 +80,8 @@ for (const directory of directories) {
   for (const path of files) {
     const original = readFileSync(path, "utf8");
     let xml = original;
-    const themeOpenings = matches(xml, /<style\b[^>]*\sname\s*=\s*["']Theme\.hghubx["'][^>]*>/g);
-    const themes = matches(xml, /(<style\b[^>]*\sname\s*=\s*["']Theme\.hghubx["'][^>]*>)([\s\S]*?)(<\/style\s*>)/g);
+    const themeOpenings = matches(xml, new RegExp(`<style\\b[^>]*\\sname\\s*=\\s*["']${themePattern}["'][^>]*>`, "g"));
+    const themes = matches(xml, new RegExp(`(<style\\b[^>]*\\sname\\s*=\\s*["']${themePattern}["'][^>]*>)([\\s\\S]*?)(<\\/style\\s*>)`, "g"));
     if (themes.length !== themeOpenings.length) fail(path, `${THEME} 缺少结束标签`);
     directoryThemes += themes.length;
     if (directoryThemes > 1) fail(path, `${directory} 重复定义 ${THEME}`);

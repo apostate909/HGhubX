@@ -3,6 +3,7 @@ import { Button } from "./components/ios/controls";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore, type Page, type Tab } from "./store";
 import { isMobile, selfTest } from "./api";
+import { isTv } from "./edition";
 import { addPluginListener, invoke } from "@tauri-apps/api/core";
 import { runBack } from "./back";
 import Home from "./pages/Home";
@@ -12,7 +13,7 @@ import { ToastHost } from "./components/ui";
 import { DesktopRail, DesktopTitleBar } from "./components/DesktopChrome";
 import ResizeHandles from "./components/ResizeHandles";
 import { tracePlayback } from "./playbackDiagnostics";
-import { IGrid, IGridF, IHome, IHomeF, ISearch, IUser, IUserF } from "./icons";
+import { IGrid, IGridF, IHome, IHomeF, ISearch, ISettings, ITrophy, IUser, IUserF, Logo } from "./icons";
 
 // Local chunks load on first visit; visited tabs stay mounted as before.
 const Search = lazy(() => import("./pages/Search"));
@@ -241,6 +242,38 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
 }
 
 /* ============ 移动端（无壳） ============ */
+function TvShell() {
+  const { tab, setTab, stack, push, pop, loginOpen, fs, theater } = useStore();
+  const top = stack[stack.length - 1];
+  const railPage = top?.kind === "settings" || top?.kind === "ranks" ? top.kind : null;
+  const items = [
+    { key: "home", label: "首页", Icon: IHome },
+    { key: "search", label: "搜索", Icon: ISearch },
+    { key: "category", label: "分类", Icon: IGrid },
+    { key: "profile", label: "我的", Icon: IUser },
+  ] as const;
+  return <div className="tv-shell plat-android">
+    {!fs && !theater && <header className="tv-header">
+      <div className="tv-brand"><Logo size={30} /><span>HGhubX <small>TV</small></span></div>
+      <nav className="tv-nav" aria-label="主导航">
+        {items.map(({ key, label, Icon }) => <Button key={key} onClick={() => setTab(key)}
+          aria-current={!railPage && !stack.length && tab === key ? "page" : undefined}>
+          <Icon size={22} aria-hidden="true" /><span>{label}</span>
+        </Button>)}
+        <Button aria-current={railPage === "ranks" ? "page" : undefined} onClick={() => { if (railPage !== "ranks") push({ kind: "ranks" }); }}><ITrophy size={22} aria-hidden="true" />排行榜</Button>
+        <Button aria-current={railPage === "settings" ? "page" : undefined} onClick={() => { if (railPage !== "settings") push({ kind: "settings" }); }}><ISettings size={22} aria-hidden="true" />设置</Button>
+      </nav>
+    </header>}
+    <div className="tv-main">
+      <MainTabs wide pageActive={!stack.length && !loginOpen} bottomInset={12} />
+      {stack.map((page, index) => <div key={page.key} className="absolute inset-0 z-30 bg-bg"
+        inert={index !== stack.length - 1 || loginOpen} aria-hidden={index !== stack.length - 1 || loginOpen}>
+        <StackPage page={page} onBack={pop} wide top={index === stack.length - 1 && !loginOpen} bottomInset={12} />
+      </div>)}
+    </div>
+  </div>;
+}
+
 function MobileShell() {
   const { platform } = useStore();
   return (
@@ -316,6 +349,13 @@ export default function App() {
   }, [platform]);
 
   useEffect(() => {
+    if (!isTv) return;
+    const back = (event: Event) => { event.preventDefault(); backRef.current(); };
+    window.addEventListener("hghubx:tv-back", back);
+    return () => window.removeEventListener("hghubx:tv-back", back);
+  }, []);
+
+  useEffect(() => {
     const prevent = (e: Event) => { if (!isSelectableText(e.target)) e.preventDefault(); };
     document.addEventListener("contextmenu", prevent);
     return () => document.removeEventListener("contextmenu", prevent);
@@ -331,7 +371,7 @@ export default function App() {
 
   return (
     <>
-      {isMobile ? <MobileShell /> : <DesktopShell />}
+      {isTv ? <TvShell /> : isMobile ? <MobileShell /> : <DesktopShell />}
       <LoginModal />
       <ToastHost />
     </>

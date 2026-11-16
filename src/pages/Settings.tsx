@@ -7,6 +7,8 @@ import LinePicker from "../components/LinePicker";
 import ProxySettings from "../components/ProxySettings";
 import ContentPreferencesSettings from "../components/ContentPreferencesSettings";
 import SettingsSection from "../components/SettingsSection";
+import TvDisplaySettings from "../components/TvDisplaySettings";
+import { appName, isTv } from "../edition";
 import { UsageAgreementText } from "../components/UsageAgreement";
 import { USAGE_AGREEMENT_VERSION } from "../usageAgreement";
 import { autoLineEnabled, setAutoLine } from "../autoLine";
@@ -16,9 +18,10 @@ import { copyText } from "../clipboard";
 import { Loader } from "../components/ios/effects";
 import { IBack, IBoltF, IBroom, IChevR, IHeart, IInfo, ILink, ILockF, IMoon, IRefresh, ISun, IVolMute } from "../icons";
 
-const SETTING_GROUPS = ["外观", "播放", "内容偏好", "本地数据", "网络", "播放诊断", "其他"] as const;
+const SETTING_GROUPS = ["电视画面", "外观", "播放", "内容偏好", "本地数据", "网络", "播放诊断", "其他"] as const;
 type SettingGroup = typeof SETTING_GROUPS[number];
 const GROUP_SUMMARIES: Record<SettingGroup, string> = {
+  电视画面: "",
   外观: "跟随系统、浅色与深色",
   播放: "启动静音与画质偏好",
   内容偏好: "标签屏蔽与内容显示",
@@ -128,6 +131,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             <h1 className="ios-page-title text-on">设置</h1>
             <p className="text-[13px] text-mut mt-2">让 HGhubX 更合你的习惯</p>
           </div>
+          {isTv && section("电视画面", <TvDisplaySettings />)}
           {section("外观", <>
             <div className="ios-appearance-row items-center">
               <span className="ios-setting-icon">{themePreference === "system" ? <IRefresh size={16} /> : theme === "dark" ? <IMoon size={16} /> : <ISun size={16} />}</span>
@@ -295,14 +299,14 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             {playbackLog.path && <details className="ios-settings-log-path text-[12px] text-mut"><summary className="cursor-pointer py-3">查看日志保存位置</summary><p className="break-all select-text pb-3">{playbackLog.path}</p></details>}
           </>)}
           {section("其他", <>
-            <Button onClick={checkUpdate} disabled={checking} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable disabled:opacity-60">
+            {!isTv && <Button onClick={checkUpdate} disabled={checking} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable disabled:opacity-60">
               <span className="ios-setting-icon">{checking ? <Loader label="正在检查更新" className="size-4" /> : <IRefresh size={16} />}</span>
               <div className="flex-1">
                 <div className="text-[14px] text-on">检查更新</div>
                 <div className="text-[12px] text-mut">{checking ? "检查中…" : `当前 v${APP_VERSION} · 对比 GitHub Release`}</div>
               </div>
               <IChevR size={15} className="text-mut" />
-            </Button>
+            </Button>}
             <Button onClick={() => setAgreementOpen(true)} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable">
               <span className="ios-setting-icon"><ILockF size={16} /></span>
               <div className="flex-1 min-w-0">
@@ -314,14 +318,14 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             <Button onClick={() => setAbout(true)} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable">
               <span className="ios-setting-icon"><IInfo size={16} /></span>
               <div className="flex-1">
-                <div className="text-[14px] text-on">关于 HGhubX</div>
+                <div className="text-[14px] text-on">关于 {appName}</div>
                 <div className="text-[12px] text-mut">版本 {APP_VERSION} · 仅限非商业使用</div>
               </div>
               <IChevR size={15} className="text-mut" />
             </Button>
           </>)}
 
-          <div className="text-center text-[12px] text-dim mt-5">HGhubX {APP_VERSION} · {platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows"} 客户端</div>
+          <div className="text-center text-[12px] text-dim mt-5">{appName} {APP_VERSION} · {isTv ? "Android TV" : platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows"} 客户端</div>
         </div>
       </div>
 
@@ -359,19 +363,18 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
         </div>
       </Modal>
 
-      <Modal label="关于 HGhubX" open={about} onClose={() => setAbout(false)} width={392}>
+      <Modal label={`关于 ${appName}`} open={about} onClose={() => setAbout(false)} width={isTv ? 560 : 392}>
         <div className="p-5">
           <div className="flex items-center gap-3">
             <span className="w-11 h-11 rounded-(--r-sm) brand-grad glow-neon flex items-center justify-center text-on-primary text-[17px] font-black">H</span>
             <div>
-              <div className="text-[16px] font-bold text-on leading-tight">HGhubX</div>
-              <div className="text-[12px] text-mut mt-0.5">HGhubX 客户端 v{APP_VERSION}</div>
+              <div className="text-[16px] font-bold text-on leading-tight">{appName}</div>
+              <div className="text-[12px] text-mut mt-0.5">{appName} 客户端 v{APP_VERSION}</div>
             </div>
           </div>
 
           <p className="text-[13px] text-on/70 leading-relaxed mt-4">
-            基于 Rust + Tauri 2 构建的跨平台客户端，支持 Windows、macOS、Linux、Android 与 iOS。
-            界面采用 iOS 圆角与玻璃材质风格，播放器采用沉浸式竖屏信息流。
+            {isTv ? "适配 Android TV 的独立客户端，支持遥控器导航、大屏播放与直接选集。" : "基于 Rust + Tauri 2 构建的跨平台客户端，支持 Windows、macOS、Linux、Android 与 iOS。界面采用 iOS 圆角与玻璃材质风格，播放器采用沉浸式竖屏信息流。"}
           </p>
 
           <Surface className="mt-4 rounded-(--r-sm) bg-s3/60 p-3 text-[12px] text-mut leading-relaxed">

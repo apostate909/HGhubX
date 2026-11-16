@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from "react";
+import { isTv } from "./edition";
 import "./styles/tv-navigation.css";
 
 type Direction = "up" | "down" | "left" | "right";
 const candidates = 'button, input, textarea, select, a[href], summary, [tabindex], [contenteditable="true"]';
-let tvActive = false;
+let tvActive = isTv;
 const subscribers = new Set<() => void>();
 
 export const isTvNavigationActive = () => tvActive;
@@ -11,11 +12,11 @@ const subscribe = (listener: () => void) => { subscribers.add(listener); return 
 export const useTvNavigation = () => useSyncExternalStore(subscribe, isTvNavigationActive, () => false);
 
 function setTvActive(value: boolean) {
-  if (tvActive === value) return;
+  const changed = tvActive !== value;
   tvActive = value;
   if (value) document.documentElement.setAttribute("data-tv-navigation", "true");
   else document.documentElement.removeAttribute("data-tv-navigation");
-  subscribers.forEach(listener => listener());
+  if (changed) subscribers.forEach(listener => listener());
 }
 
 function directionOf(event: KeyboardEvent): Direction | null {
@@ -78,6 +79,13 @@ function focus(element: HTMLElement, root: HTMLElement) {
   reveal(element, root);
 }
 
+function entryPoint(items: HTMLElement[]) {
+  // Reading the agreement remains the first step; Enter never signs it for the user.
+  return items.find(element => element.hasAttribute("data-tv-initial"))
+    || (isTv ? items.find(element => element.getAttribute("aria-current") === "page" && inViewport(element)) : undefined)
+    || items.find(inViewport) || items[0];
+}
+
 function scroll(element: HTMLElement, direction: Direction) {
   const vertical = direction === "up" || direction === "down";
   const style = getComputedStyle(element);
@@ -97,10 +105,8 @@ function move(root: HTMLElement, direction: Direction) {
   if (!items.length) return;
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   if (!active || !items.includes(active)) {
-    // The agreement's scrollable text is an explicit entry point before consent.
-    const entry = items.find(element => element.hasAttribute("data-tv-initial"))
-      || items.find(inViewport) || items[0];
-    focus(entry, root);
+    const entry = entryPoint(items);
+    if (entry) focus(entry, root);
     return;
   }
   // A focused text region consumes arrows until its edge, then exits to controls.
@@ -149,18 +155,70 @@ function keepEditing(element: HTMLElement | null, direction: Direction | null) {
   return true;
 }
 
-/** Install once before React mounts. Touch/mouse and desktop keyboard keep their current behavior. */
+/** Install once before React mounts. The TV edition keeps remote navigation on;
+ * ordinary Android still opts in on a direction key and exits on pointer input.
+ */
 export function installTvNavigation() {
-  if (!/Android/i.test(navigator.userAgent)) return () => {};
+  if (!isTv && !/Android/i.test(navigator.userAgent)) return () => {};
   const activate = () => setTvActive(true);
-  const reset = () => setTvActive(false);
+  const reset = () => { if (!isTv) setTvActive(false); };
   const isConfirm = (event: KeyboardEvent) => ["Enter", "NumpadEnter", "DpadCenter", "DPAD_CENTER"].includes(event.key);
   const consume = (event: KeyboardEvent) => { event.preventDefault(); event.stopImmediatePropagation(); };
+  const rememberedFocus = new WeakMap<HTMLElement, HTMLElement>();
+  let focusFrame = 0;
+  let disposed = false;
+  const ensureFocus = () => {
+    focusFrame = 0;
+    if (disposed || !isTv || document.getElementById("hg-startup-error")) return;
+    const root = scope();
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (active && root.contains(active) && active.tabIndex >= 0 && available(active)) return;
+    const previous = rememberedFocus.get(root);
+    if (previous && root.contains(previous) && previous.tabIndex >= 0 && available(previous)) {
+      focus(previous, root);
+      return;
+    }
+    const entry = entryPoint(focusables(root));
+    if (entry) focus(entry, root);
+  };
+  const scheduleFocus = () => {
+    if (isTv && !disposed && !focusFrame) focusFrame = window.requestAnimationFrame(ensureFocus);
+  };
+  const rememberFocus = (event: FocusEvent) => {
+    if (!(event.target instanceof HTMLElement)) return;
+    const root = scope();
+    if (root.contains(event.target) && event.target.tabIndex >= 0) rememberedFocus.set(root, event.target);
+    else scheduleFocus();
+  };
   const down = (event: KeyboardEvent) => {
     // The ES5 startup fallback has its own navigation even if this module loaded
     // before another module failed; do not intercept that diagnostic panel.
     if (document.getElementById("hg-startup-error")) return;
     if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (isTv && ["Escape", "BrowserBack", "GoBack"].includes(event.key)) {
+      // Until App mounts, the launch/consent screens own Escape themselves.
+      // A cancelable event lets the mounted shell claim exactly one back action.
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      if (editing(active)) {
+        consume(event);
+        if (!event.repeat && active) {
+          const root = scope();
+          const next = entryPoint(focusables(root).filter(element => !editing(element)));
+          active.blur();
+          if (next) focus(next, root);
+        }
+        return;
+      }
+      if (event.repeat) { consume(event); return; }
+      const back = new CustomEvent("hghubx:tv-back", { cancelable: true });
+      window.dispatchEvent(back);
+      if (back.defaultPrevented) consume(event);
+      else if (event.key !== "Escape") {
+        consume(event);
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      }
+      return;
+    }
     const direction = directionOf(event);
     if (!direction && (!tvActive || !isConfirm(event))) return;
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -188,11 +246,38 @@ export function installTvNavigation() {
   window.addEventListener("keyup", up, true);
   window.addEventListener("pointerdown", reset, true);
   window.addEventListener("touchstart", reset, { capture: true, passive: true });
+  let observer: MutationObserver | undefined;
+  if (isTv) {
+    activate();
+    document.addEventListener("focusin", rememberFocus);
+    document.addEventListener("focusout", scheduleFocus);
+    document.addEventListener("transitionend", scheduleFocus);
+    document.addEventListener("animationend", scheduleFocus);
+    observer = new MutationObserver(records => {
+      // Ignore clock/counter text updates. A render batch schedules at most one
+      // focus repair, and a valid focus never scans all interactive controls.
+      if (records.some(record => record.type === "attributes" ||
+        Array.from(record.addedNodes).some(node => node instanceof Element) ||
+        Array.from(record.removedNodes).some(node => node instanceof Element))) scheduleFocus();
+    });
+    observer.observe(document.body, {
+      childList: true, subtree: true, attributes: true,
+      attributeFilter: ["inert", "aria-hidden", "hidden", "disabled", "aria-disabled", "data-tv-active-scope", "open"],
+    });
+    scheduleFocus();
+  }
   return () => {
+    disposed = true;
+    if (focusFrame) window.cancelAnimationFrame(focusFrame);
+    observer?.disconnect();
+    document.removeEventListener("focusin", rememberFocus);
+    document.removeEventListener("focusout", scheduleFocus);
+    document.removeEventListener("transitionend", scheduleFocus);
+    document.removeEventListener("animationend", scheduleFocus);
     window.removeEventListener("keydown", down, true);
     window.removeEventListener("keyup", up, true);
     window.removeEventListener("pointerdown", reset, true);
     window.removeEventListener("touchstart", reset, true);
-    reset();
+    setTvActive(false);
   };
 }

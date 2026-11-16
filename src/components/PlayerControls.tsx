@@ -4,6 +4,8 @@ import { fmtTime } from "../api";
 import { useSeekInput } from "../useSeekInput";
 import { ICheck, ICompress, IExpand, ILockF, INext, IPauseF, IPip, IPlayF, ITheater, IVertSwap, IVol, IVolMute } from "../icons";
 import type { PlaybackClock } from "../playbackClock";
+import { registerOverlayBack } from "../back";
+import { isTv } from "../edition";
 
 type Props = {
   paused: boolean;
@@ -53,8 +55,15 @@ export default function PlayerControls({
     const frame = requestAnimationFrame(() => boxRef.current?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')?.focus());
     const outside = (e: PointerEvent) => { if (!boxRef.current?.contains(e.target as Node)) setSpeedOpen(false); };
     document.addEventListener("pointerdown", outside);
-    return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", outside); };
+    const removeBack = registerOverlayBack(() => {
+      setSpeedOpen(false);
+      boxRef.current?.querySelector<HTMLButtonElement>(".player-speed")?.focus();
+      return true;
+    });
+    return () => { removeBack(); cancelAnimationFrame(frame); document.removeEventListener("pointerdown", outside); };
   }, [speedOpen]);
+
+  useEffect(() => { setSpeedOpen(false); }, [seekKey, visible]);
 
   return (
     <div ref={boxRef} className={`desktop-controls ${fullscreen ? "is-fullscreen" : ""} ${visible ? "" : "is-hidden"}`}
@@ -94,7 +103,7 @@ export default function PlayerControls({
             {Number.isInteger(rate) ? rate.toFixed(1) : rate}x
           </Button>
           {speedOpen && (
-            <div className="player-speed-menu" role="menu" aria-label="播放速度" onKeyDownCapture={event => {
+            <div className="player-speed-menu" role="menu" data-tv-active-scope={isTv ? "true" : undefined} aria-label="播放速度" onKeyDownCapture={event => {
               const entries = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
               const index = entries.indexOf(document.activeElement as HTMLButtonElement);
               if (event.key === "Escape") {

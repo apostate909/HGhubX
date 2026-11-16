@@ -24,8 +24,8 @@ export function usePlaybackActivity(
     if (hls?.levels.length && !hls.loadingEnabled) hls.startLoad(v.currentTime);
     latest.current.trace("play.request", { source });
     v.play().then(() => {
-      // The page may have changed while play() was pending.
-      if (!mounted.current || !latest.current.active) v.pause();
+      // A page change or explicit pause also wins over an earlier pending play().
+      if (!mounted.current || !latest.current.active || !wanted.current) v.pause();
     }).catch(e => latest.current.trace("play.rejected", { source, error_name: e?.name }));
   }, []);
   const pause = useCallback((source = "handle") => {

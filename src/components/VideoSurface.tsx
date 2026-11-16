@@ -11,6 +11,7 @@ import { createHlsRecovery, type HlsRecovery } from "../hlsRecovery";
 export type VideoHandle = {
   el: () => HTMLVideoElement | null;
   play: () => void;
+  resumeIfWanted: () => void;
   retry: () => void;
   pause: () => void;
   toggle: () => void;
@@ -90,6 +91,9 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   useImperativeHandle(ref, () => ({
     el: () => videoRef.current,
     play: () => activity.play("handle"),
+    resumeIfWanted: () => {
+      if (attachedSource.current === latestSource.current) activity.play("fullscreen_recovery", true);
+    },
     retry: () => { if (activity.isActive()) proxyRecovery.retry("manual", true); },
     pause: () => activity.pause(),
     toggle: () => {
