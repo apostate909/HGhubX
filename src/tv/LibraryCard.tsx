@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useContentPreferences } from "../contentPreferences";
-import { contentKey, needsLibraryMetadata, type TvContent } from "./model";
+import { contentKey, needsLibraryMetadata, type TvContent, type TvProgress } from "./model";
 import { loadLibraryMetadata } from "./libraryMetadata";
 import { useTv } from "./TvProvider";
 import { TvCard } from "./ui";
 
-export function LibraryCard({ content, onOpen, active }: { content: TvContent; onOpen: (content: TvContent) => void; active: boolean }) {
+export function LibraryCard({ content, onOpen, active, progress }: { content: TvContent; onOpen: (content: TvContent) => void; active: boolean; progress?: TvProgress }) {
   const { source, sourceKey } = useTv(), preferences = useContentPreferences();
   const root = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false), [foreground, setForeground] = useState(!document.hidden);
@@ -45,6 +45,6 @@ export function LibraryCard({ content, onOpen, active }: { content: TvContent; o
       <div className="tv-card-art"><span className="tv-neutral">{error ? "重试" : "加载中…"}</span></div>
       <strong>{error ? "信息加载失败" : "正在加载影片信息…"}</strong>
       {error && <small>确认重试</small>}
-    </button> : <TvCard content={content} onOpen={onOpen} placeholder />}
+    </button> : <TvCard content={content} onOpen={onOpen} placeholder progress={progress} />}
   </div>;
 }

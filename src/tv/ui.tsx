@@ -1,16 +1,17 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { cover } from "../api";
 import { useContentPreferences } from "../contentPreferences";
-import { contentKey, type TvContent } from "./model";
+import { contentKey, type TvContent, type TvProgress } from "./model";
 import { focusElement, focusables, useRemoteScope } from "./remote";
 
-export function TvCard({ content, onOpen, placeholder = false }: { content: TvContent; onOpen: (content: TvContent) => void; placeholder?: boolean }) {
+export function TvCard({ content, onOpen, placeholder = false, progress }: { content: TvContent; onOpen: (content: TvContent) => void; placeholder?: boolean; progress?: TvProgress }) {
   const { blockReason } = useContentPreferences();
   const blocked = blockReason(content.tags);
   if (blocked && !placeholder) return null;
   return <button className={`tv-card ${content.kind === "post" ? "tv-card-wide" : ""}`} data-tv-focus={contentKey(content)} onClick={() => onOpen(content)} aria-label={blocked ? "已屏蔽的内容" : content.title}>
     <div className="tv-card-art">{blocked ? <span className="tv-neutral">已屏蔽</span> : content.cover ? <img src={cover(content.cover)} alt="" loading="lazy" /> : <span className="tv-neutral">HGhubX</span>}
-      {!blocked && !!content.score && <span className="tv-score">{content.score.toFixed(1)}</span>}</div>
+      {!blocked && !!content.score && <span className="tv-score">{content.score.toFixed(1)}</span>}
+      {!blocked && progress && progress.duration > 0 && <span className="tv-card-progress" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, progress.seconds / progress.duration * 100))}%` }} /></span>}</div>
     <strong>{blocked ? "已屏蔽的内容" : content.title}</strong><small>{blocked ? "记录已保留" : content.kind === "post" ? "吃瓜视频" : content.episodeCount ? `${content.episodeCount} 集` : "查看详情"}</small>
   </button>;
 }

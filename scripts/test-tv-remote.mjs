@@ -139,6 +139,11 @@ try {
     });
     assert.deepEqual(await shelf.locator("strong").allTextContents(), ["短名", "这是一部标题很长且不应改变封面宽度的作品", "A_Long_Unbroken_Title_For_Card_Width"]);
     assert.deepEqual(await shelf.locator("img").evaluateAll(images => images.map(image => [image.naturalWidth, image.naturalHeight])), [[160, 400], [900, 300], [500, 500]]);
+    const resumeRatios = await page.evaluate(() => [...document.querySelectorAll('[data-tv-region="home-继续观看"] .tv-card')].map(card => {
+      const track = card.querySelector(".tv-card-progress"), fill = track?.firstElementChild;
+      return track && fill ? fill.offsetWidth / track.offsetWidth : null;
+    }));
+    for (const ratio of resumeRatios) assert(ratio !== null && Math.abs(ratio - 5 / 60) < .01, `resume bar must show 5s of 60s, got ${ratio}`);
     const ready = [];
     for (const [width, height] of [[1280, 720], [1920, 1080], [3840, 2160]]) {
       await page.setViewportSize({ width, height });

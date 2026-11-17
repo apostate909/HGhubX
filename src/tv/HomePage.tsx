@@ -25,11 +25,13 @@ export default function HomePage({ onOpen, active = true }: { onOpen: (content: 
       } catch(e) { if(current) setError(String(e)); } finally { if(current) setBusy(false); }
     })(); return () => { current = false; };
   }, [sourceKey, source, retry, revision, active, identity]);
-  const history = library.filter(entry => entry.progress).sort((a,b) => b.progress!.updatedAt - a.progress!.updatedAt).slice(0,15).map(entry => entry.content);
+  const historyEntries = library.filter(entry => entry.progress).sort((a,b) => b.progress!.updatedAt - a.progress!.updatedAt).slice(0,15);
+  const history = historyEntries.map(entry => entry.content);
+  const resume = new Map(historyEntries.map(entry => [contentKey(entry.content), entry.progress]));
   return <><header className="tv-page-heading"><h1>首页</h1></header>
     <TvStatus busy={busy} error={error} onRetry={() => setRetry(r=>r+1)} />
     {[...(history.length ? [{title:"继续观看",items:history}] : []), ...rows].map(row => <section className="tv-shelf" key={row.title}><h2>{row.title}</h2><div className="tv-shelf-track" data-tv-region={`home-${row.title}`} data-tv-scroll-id={`home-${row.title}`}>
-      {row.items.filter(content=>row.title === "继续观看" || !blockReason(content.tags)).map(content=>row.title === "继续观看" ? <LibraryCard key={contentKey(content)} content={content} onOpen={onOpen} active={active}/> : <TvCard key={contentKey(content)} content={content} onOpen={onOpen}/>)}
+      {row.items.filter(content=>row.title === "继续观看" || !blockReason(content.tags)).map(content=>row.title === "继续观看" ? <LibraryCard key={contentKey(content)} content={content} progress={resume.get(contentKey(content))} onOpen={onOpen} active={active}/> : <TvCard key={contentKey(content)} content={content} onOpen={onOpen}/>)}
     </div></section>)}
   </>;
 }
