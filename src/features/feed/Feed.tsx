@@ -20,7 +20,7 @@ import { TagBlockMenu } from "../../shared/ui/TagBlockMenu";
 import VideoDetailsPanel from "./VideoDetailsPanel";
 import { PreferenceStorageNotice } from "../../shared/ui/PreferenceStorageNotice";
 import MobileHoldGuide from "./MobileHoldGuide";
-import { createHoldSpeed, getHoldZone, shiftHoldSpeed, stageXY, HOLD_DELAY_MS, HOLD_LOCK_DISTANCE, type HoldSpeed, type HoldZone } from "./mobileHold";
+import { createHoldSpeed, getHoldPoint, getHoldZone, isInsideHoldTarget, shiftHoldSpeed, HOLD_DELAY_MS, type HoldRect, type HoldRotation, type HoldSpeed, type HoldZone } from "./mobileHold";
 import { useFsIdle } from "./fsIdle";
 import { useMobileHoldGuide } from "./useMobileHoldGuide";
 import { useFeedDetails } from "./useFeedDetails";
@@ -143,6 +143,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const [lockArmed, setLockArmed] = useState(false);
   const holdRef = useRef(false);
   const lockArmedRef = useRef(false);
+  const speedLockTargetRef = useRef<HTMLButtonElement>(null);
   const [scrub, setScrub] = useState<{ pct: number; target: number } | null>(null);
   const scrubTarget = useRef<number | null>(null);
   /* 进度条拖动 */
@@ -152,7 +153,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const gesture = useRef<{
     x: number; y: number; startY: number; t: number; timer: number | null;
     mode: "idle" | "hold" | "scrub" | "pan"; base: number; width: number; playing: boolean;
-    zone: HoldZone; speed: HoldSpeed | null; rotated: boolean;
+    zone: HoldZone; speed: HoldSpeed | null; rect: HoldRect; rotation: HoldRotation;
   } | null>(null);
   /* 单击 / 双击判定：单击净屏，双击暂停 */
   const lastTapRef = useRef<{ timer: number | null; clean?: boolean; idle?: boolean }>({ timer: null });
@@ -606,10 +607,23 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     else el.requestFullscreen().catch(() => {});
   };
 
-  /* —— 长按 2x（上滑锁定） / 横拖定位 / 单击暂停 —— */
+  /* 锁定命中 = 手指真的移入顶部倍速胶囊（含旋转后的 DOM 矩形）；静止手指压着
+     新出现的提示不算移入（先走 12px 位移门槛）。 */
+  const isOverSpeedLock = (clientX: number, clientY: number) => {
+    const g = gesture.current, target = speedLockTargetRef.current;
+    if (!g || g.mode !== "hold" || g.zone !== "fast" || !target) return false;
+    const point = getHoldPoint(clientX, clientY, g.rect, g.rotation);
+    return Math.hypot(point.x - g.x, point.y - g.y) >= 12
+      && isInsideHoldTarget(clientX, clientY, target.getBoundingClientRect());
+  };
+
+  /* —— 长按加速（移入顶部胶囊锁定） / 横拖定位 / 单击净屏、双击暂停 —— */
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isDesktop || controlsLocked || !active || showHoldGuide) return;
-    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const rect = e.currentTarget.getBoundingClientRect();
+    const rotation: HoldRotation = rotated ? 90 : 0;
+    const point = getHoldPoint(e.clientX, e.clientY, rect, rotation);
+    pointersRef.current.set(e.pointerId, { x: point.x, y: point.y });
     if (pointersRef.current.size === 2) {
       const pts = [...pointersRef.current.values()];
       const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
@@ -631,17 +645,14 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     }
     if (gesture.current || e.button !== 0) return;
     const el = e.currentTarget;
-    const rect = el.getBoundingClientRect();
-    const rot = rotated;
-    const width = (rot ? rect.height : el.clientWidth) || 1;
-    const [sx, sy] = stageXY(rot, e.clientX, e.clientY);
-    // 按视觉矩形求真正的正方形；CSS 旋转全屏时也与蒙板标记重合。
-    const zone = getHoldZone(e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height);
+    const width = point.width || 1;
+    // 分区/引导共用播放器坐标：CSS 旋转横屏下「视频右上」不再是「屏幕右上」。
+    const zone = getHoldZone(point.x, point.y, point.width, point.height);
     try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
     const g = {
-      x: sx, y: sy, startY: sy, t: Date.now(), base: videoRef.current?.el()?.currentTime ?? playbackClock.getSnapshot(), width,
+      x: point.x, y: point.y, startY: point.y, t: Date.now(), base: videoRef.current?.el()?.currentTime ?? playbackClock.getSnapshot(), width,
       mode: "idle" as "idle" | "hold" | "scrub" | "pan",
-      zone, speed: null, rotated: rot,
+      zone, speed: null, rect, rotation,
       playing: videoRef.current?.el()?.paused === false,
       timer: window.setTimeout(() => {
         const cur = gesture.current;
@@ -664,8 +675,10 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   };
 
   const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const g = gesture.current;
+    const point = getHoldPoint(e.clientX, e.clientY, g?.rect ?? e.currentTarget.getBoundingClientRect(), g?.rotation ?? (rotated ? 90 : 0));
     if (pointersRef.current.has(e.pointerId)) {
-      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      pointersRef.current.set(e.pointerId, { x: point.x, y: point.y });
     }
     const p = pinchRef.current;
     if (p && pointersRef.current.size >= 2) {
@@ -677,16 +690,14 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       setZoom({ s, x: p.x0 + (mx - p.mx0), y: p.y0 + (my - p.my0), g: true });
       return;
     }
-    const g = gesture.current;
     if (!g || isDesktop) return;
-    const [sx, sy] = stageXY(g.rotated, e.clientX, e.clientY);
-    const dx = sx - g.x, dy = sy - g.y;
+    const dx = point.x - g.x, dy = point.y - g.y;
 
-    /* 长按中：右上加速区上滑 64px 进入「松开即锁定」；减速/不感兴趣区不锁 */
+    /* 长按中：加速区左右滑换挡；移入顶部胶囊才 armed，减速/不感兴趣区不锁 */
     if (g.mode === "hold") {
       if (g.zone !== "fast") return;
-      const step = g.speed && shiftHoldSpeed(g.speed, sx); if (step) setHoldSpeed(step);
-      const armed = g.startY - sy > HOLD_LOCK_DISTANCE;
+      const step = g.speed && shiftHoldSpeed(g.speed, point.x); if (step) setHoldSpeed(step);
+      const armed = isOverSpeedLock(e.clientX, e.clientY);
       if (armed !== lockArmedRef.current) {
         lockArmedRef.current = armed;
         setLockArmed(armed);
@@ -723,12 +734,13 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       setZoom((z) => (z.s < 1.05 ? { s: 1, x: 0, y: 0, g: false } : { s: z.s, x: z.x, y: z.y, g: false }));
     }
     const g = gesture.current;
+    // 松手位置再验一次命中：armed 之后手指又移出胶囊的，不锁定。
+    const releasedOnLock = !cancelled && !!e && isOverSpeedLock(e.clientX, e.clientY);
     gesture.current = null;
     /* 长按状态必须无条件复位：切集 / 组件重建会把手势对象清掉，
        但 holdRef 若留在 true，下面的 touchmove 会一直 preventDefault，
        整个列表就再也滑不动（表现为「播放后不能上滑」）。 */
     if (holdRef.current) { holdRef.current = false; setHoldSpeed(0); setHoldSlow(false); }
-    const wasLockArmed = lockArmedRef.current;
     if (lockArmedRef.current) { lockArmedRef.current = false; setLockArmed(false); }
     if (!g) return;
     if (g.timer) window.clearTimeout(g.timer);
@@ -737,7 +749,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       holdRef.current = false;
       setHoldSpeed(0);
       setHoldSlow(false);
-      if (!cancelled && wasLockArmed) {
+      if (releasedOnLock) {
         setSpeedLock(g.speed?.rate || 2);
         toast(`已锁定 ${g.speed?.rate || 2}x 倍速 · 点顶部标签解除`, "info");
       }
@@ -756,9 +768,9 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     /* 上下划手势（swipeEp 开启时 overlay 是 touch-action:none，
        原生滚动不参与，这里抬手一次性判定；关着时走原生滚动切剧） */
     if (!cancelled && e && g.mode === "pan") {
-      const [ux, uy] = stageXY(g.rotated, e.clientX, e.clientY);
-      const dy = uy - g.startY;
-      const dx2 = ux - g.x;
+      const point = getHoldPoint(e.clientX, e.clientY, g.rect, g.rotation);
+      const dy = point.y - g.startY;
+      const dx2 = point.x - g.x;
       if (Math.abs(dy) > 56 && Math.abs(dy) > Math.abs(dx2)) {
         const dir = dy < 0 ? 1 : -1;
         const ep = epMap[curId] || 1;
@@ -1123,7 +1135,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                 <div ref={holdTargetRef} data-mobile-hold-target={!isDesktop || undefined}
                   className="absolute inset-0" style={{ touchAction: fs || swipeEp ? "none" : "pan-y" }}
                   onPointerDown={onDown} onPointerMove={onMove} onPointerUp={(e) => onUp(false, e)} onPointerCancel={(e) => onUp(true, e)} onLostPointerCapture={(e) => onUp(true, e)}>
-                <div style={{ position: "absolute", inset: 0, transform: isDesktop ? undefined : `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.s})`, transformOrigin: "center center", transition: isDesktop || zoom.g ? "none" : "transform .18s ease-out" }}>
+                {/* 老 WebView 不认识 inset 简写；四边写法保证缩放舞台铺满（#138）。 */}
+                <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, transform: isDesktop ? undefined : `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.s})`, transformOrigin: "center center", transition: isDesktop || zoom.g ? "none" : "transform .18s ease-out" }}>
                 <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay active={active && !tagMenu && !showHoldGuide} muted={muted}
                   diagnosticContext={{ active: active && !tagMenu && !showHoldGuide, view: mode, kind, video_id: curId, episode: curEp }}
                   volume={volume} rate={effRate}
@@ -1483,10 +1496,10 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
         />
       )}
 
-      {/* 移动端：倍速状态 / 锁定提示 */}
-      {/* 锁定提示并入倍速胶囊：锁定只看上滑距离，不存在「拖到某个位置」的目标 */}
+      {/* 移动端：倍速状态胶囊，也是长按锁定的真实命中目标（isOverSpeedLock）。 */}
       {!isDesktop && (holdSpeed || holdSlow || speedLock || rate !== 1) && (holdSpeed || holdSlow || !fs || !idle) && (
         <Button
+          ref={speedLockTargetRef}
           onClick={() => {
             if (speedLock) { setSpeedLock(0); toast("已解除倍速锁定", "info"); }
             else if (rate !== 1 && !holdSpeed) setRate(1);
@@ -1494,7 +1507,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
           className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-3.5 h-8 rounded-full text-[13px] font-semibold whitespace-nowrap pressable"
           style={{ top: "calc(var(--sat, 0px) + 54px)", background: "rgba(0,0,0,.18)", color: lockArmed || speedLock ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.85)" }}>
           <IBoltF size={13} />
-          {effRate}x {holdSpeed ? (lockArmed ? "松手锁定" : "上滑后松手锁定") : speedLock ? "已锁定 · 点按解除" : holdSlow ? "减速中 · 松开恢复" : "倍速"}
+          {/* 两态文案等宽（6 字），避免命中矩形在手指停留时伸缩造成 armed 抖动 */}
+          {effRate}x {holdSpeed ? (lockArmed ? "松手即可锁定" : "移入此处锁定") : speedLock ? "已锁定 · 点按解除" : holdSlow ? "减速中 · 松开恢复" : "倍速"}
         </Button>
       )}
 
