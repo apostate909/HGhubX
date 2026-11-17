@@ -1,4 +1,5 @@
 name: Playback diagnostics
+run-name: Playback (${{ inputs.scenarios }})
 
 on:
   workflow_dispatch:
@@ -14,7 +15,7 @@ permissions:
 jobs:
   playback:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
