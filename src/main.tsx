@@ -1,3 +1,4 @@
+import { markStartupReady } from "./legacyRuntime";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./app/App";
@@ -50,9 +51,15 @@ function AcceptedApplication() {
   return <AppProvider><App /></AppProvider>;
 }
 
+/** index.html 的 ES5 启动看门狗在首个成功 commit 后解除；协议签署可以慢慢来。 */
+function StartupReady() {
+  React.useEffect(() => { markStartupReady(); }, []);
+  return <StartupGate><AcceptedApplication /></StartupGate>;
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <StartupGate><AcceptedApplication /></StartupGate>
+    <StartupReady />
   </React.StrictMode>,
 );
 installLayoutDiagnostics();

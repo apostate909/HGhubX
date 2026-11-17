@@ -112,6 +112,16 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
    覆盖层卸载时释放（引用计数 + 幂等释放，StrictMode 安全）。动画结束后只剩 App 监听，
    顺序恢复为 面板/弹层 → 全屏 → 登录框 → 页面栈 → 回首页 → 退出。未同意首启不持门。
    TV 版走 `registerBack`（remote.ts 的 scope 分发），不经 `runBack()`，门对 TV 无影响。
+6. 老 WebView（Chromium 66 车机/电视、旧 iOS WKWebView）启动支持分三层：
+   `index.html` 内嵌 ES5 启动看门狗（模块图之外的 error/unhandledrejection 监听 +
+   15s 超时，失败渲染可复制诊断的 `#hg-startup-error` 面板）；`src/legacyRuntime.ts`
+   补 `globalThis`/`Object.fromEntries`/`Promise.allSettled`/`flat(Map)`/`queueMicrotask`/
+   `matchMedia.addEventListener`/`ResizeObserver` 等运行时 API，并探测 flex-gap 写
+   `data-legacy-flex-gap`；构建层 `vite.config.ts` 以 `chrome66/safari14.1` 为语法目标，
+   `scripts/legacy-css.ts` 在 CSS 汇总后做 dvh/color-mix 回退、postcss-preset-env 降级与
+   lightningcss 压缩，并追加 `src/styles/legacy-webview.css` 的几何回退。标准入口
+   `src/main.tsx` 与 TV 入口 `src/tv/bootstrap.tsx` 都在首个成功 commit 调
+   `markStartupReady()` 解除看门狗；协议未签署不算启动失败。
 
 ## 状态转换
 

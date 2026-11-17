@@ -40,6 +40,12 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
 1. 安装依赖用 `pnpm install --frozen-lockfile`（CI 全部如此）。`pnpm build` 执行
    `tsc --noEmit`、`tsc --project tsconfig.tests.json`、`vite build`；`vite.config.ts` 从
    `package.json` 注入 `__APP_VERSION__`，避免界面版本写死。
+   Vite 构建目标是 `["chrome66","safari14.1"]`（CSS 目标 `chrome66/safari13`），
+   `cssCodeSplit:false`、`cssMinify:false`；`scripts/legacy-css.ts`（enforce:post）在
+   generateBundle 阶段对汇总后的 CSS 做旧引擎回退（dvh、color-mix、cascade layers）、
+   追加 `src/styles/legacy-webview.css` 并用 lightningcss 压缩。Tailwind 插件以
+   `optimize:false` 运行，避免其内置优化先吃掉需要降级的语法。TV 构建脚本
+   `build-android-tv.mjs` 复用同一 `pnpm build`，自动获得同一条兼容链。
 2. Tauri 构建的 `beforeBuildCommand` 在 Vite 构建后跑图标生成/同步和 Android/iOS 启动屏补丁，
    再打包 `dist`。桌面入口为 `pnpm tauri build`；开发为 `pnpm tauri dev`。
 3. `make check` 等价于 `test-rust` + `test-web` + `docs` + `budget`：

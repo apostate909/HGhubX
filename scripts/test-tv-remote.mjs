@@ -164,10 +164,10 @@ try {
   await scenario("agreement-gate-single-controller", async () => {
     const { page } = await open({ accepted: false });
     await page.locator('[data-tv-focus="agreement-checkbox"]').waitFor();
-    // This tree's index.html has no startup watchdog, so __HG_STARTUP__ is
-    // undefined and markStartupReady is a no-op by design. The gate contract
-    // here is: mounting the gate IS startup success — no content IPC, exactly
-    // one keyboard listener and one native back subscription before acceptance.
+    // index.html carries the ES5 startup watchdog again (#138); the fixture
+    // counts ready() calls through __HG_STARTUP__. The gate contract here is:
+    // mounting the gate IS startup success — no content IPC, exactly one
+    // keyboard listener and one native back subscription before acceptance.
     const pre = await page.evaluate(() => ({ ready: window.__tvFixture.startupReady, keys: window.__tvFixture.keyboardListeners,
       native: window.__tvFixture.nativeListeners, requests: window.__tvFixture.calls.filter(call => /^(api_|app_boot|line_auto|line_health)/.test(call.command)) }));
     assert.equal(pre.keys, 1); assert.equal(pre.native, 1); assert.deepEqual(pre.requests, []);

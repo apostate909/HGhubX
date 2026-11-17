@@ -113,9 +113,10 @@ export function useInlinePlayerFullscreen({ active, src, videoRef, activity }: O
       if (expanded && value) host.style.setProperty(name, value);
       else host.style.removeProperty(name);
     }
+    // 老 WebView 不认识 inset 简写与 dvh；用四边写法并探测 dvh（#138 兼容移植）。
     Object.assign(host.style, expanded
-      ? { position: "fixed", inset: "0", width: "100%", height: "100dvh", zIndex: "90", background: "#000", overflow: "hidden" }
-      : { position: "relative", inset: "", width: "100%", height: "100%", zIndex: "", background: "", overflow: "" });
+      ? { position: "fixed", top: "0", right: "0", bottom: "0", left: "0", width: "100%", height: CSS.supports("height", "100dvh") ? "100dvh" : "100vh", zIndex: "90", background: "#000", overflow: "hidden" }
+      : { position: "relative", top: "", right: "", bottom: "", left: "", width: "100%", height: "100%", zIndex: "", background: "", overflow: "" });
     if (host.parentNode === destination) return;
     const video = videoRef.current;
     const playing = !!video && !video.paused && latest.current.activity.isPlayWanted();
