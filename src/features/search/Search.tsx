@@ -94,13 +94,19 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
       <div className="ios-page-heading shrink-0"><h1 className="ios-page-title">搜索</h1></div>
       {/* 搜索栏 */}
-      <div className="shrink-0 px-4 pb-3 flex items-center gap-2.5" >
+      <div className="shrink-0 pb-3 flex items-center gap-2.5" >
         <Form className="ios-search-form flex-1 min-w-0 flex items-center gap-2"
           onSubmit={(e) => { e.preventDefault(); submit(q); }}>
           <ISearch size={17} className="text-mut shrink-0" />
-          <Input aria-label="搜索短剧、帖子、题材…" ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索短剧、帖子、题材…"
+          <Input aria-label="搜索短剧、帖子、题材…" ref={inputRef} value={q}
+            onChange={(e) => {
+              const next = e.target.value;
+              setQ(next);
+              if (!next && submitted) { setSubmitted(""); results.clear(); }
+            }}
+            placeholder="搜索短剧、帖子、题材…"
             className="flex-1 min-w-0 bg-transparent text-[14px] text-on placeholder-dim outline-none" />
-          {q && <Button aria-label="清空搜索" type="button" onClick={() => { results.clear(); setQ(""); setSubmitted(""); inputRef.current?.focus(); }} className="ios-icon-button ios-search-clear"><IClose size={16} /></Button>}
+          {(q || submitted) && <Button aria-label="清空搜索" type="button" onClick={() => { results.clear(); setQ(""); setSubmitted(""); inputRef.current?.focus(); }} className="ios-icon-button ios-search-clear"><IClose size={16} /></Button>}
         </Form>
         <Button onClick={() => push({ kind: "ranks" })} aria-label="排行榜"
           variant="primary" className="ios-icon-button ios-search-shortcut">
@@ -175,7 +181,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
             <section aria-label="搜索结果" aria-busy={loading}>
               {result && count > 0 ? <>
                 {result.kind === "video" ? (
-                  <Masonry videos={items} scopeKey={JSON.stringify([submitted, tab, result.keyword, result.kind])} wide={wide} onOpen={(v) => push({ kind: "feed", videoIds: items.map((x) => x.id), index: items.findIndex((x) => x.id === v.id), title: `搜索 · ${result.keyword}` })} />
+                  <Masonry videos={items} scopeKey={JSON.stringify([submitted, tab, result.keyword, result.kind])} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map((x) => x.id), index: visible.findIndex((x) => x.id === v.id), title: `搜索 · ${result.keyword}` })} />
                 ) : (
                   <FilteredContent items={posts} scopeKey={JSON.stringify([submitted, tab, result.keyword, result.kind])}>{visible => <div className={`ios-media-grid ${wide ? "is-wide" : ""}`}>
                     {visible.map((post) => (
@@ -294,7 +300,7 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
             {loading && <p role="status" className="text-[12px] text-mut mb-2">正在刷新，当前显示上次榜单…</p>}
             <FilteredContent items={items} scopeKey={tab}>{visible => visible.map((it) => (
               <RankRow key={`${it.video_id}-${it.rank}`} item={it} metricMax={max}
-                onOpen={() => push({ kind: "feed", videoIds: items.map((x) => x.video_id), index: items.findIndex((x) => x.video_id === it.video_id), title: meta.label })} />
+                onOpen={() => push({ kind: "feed", videoIds: visible.map((x) => x.video_id), index: visible.findIndex((x) => x.video_id === it.video_id), title: meta.label })} />
             ))}</FilteredContent>
           </> : loading ? (
             <div className="flex justify-center py-12"><Loader label="正在加载榜单" className="w-8 h-8 spinner" /></div>

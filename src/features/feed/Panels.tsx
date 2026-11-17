@@ -1,6 +1,6 @@
 import { Button, Form, Image, Input } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, fmt, cover as imageCover } from "../../shared/api/api";
 import { handleArticleClick, sanitizeHtml } from "../../shared/lib/html";
 import { commentText } from "./commentText";
@@ -17,7 +17,12 @@ export function EpisodesPanel({ episodes, current, onPick, onClose, bare = false
   bare?: boolean;
 }) {
   const [asc, setAsc] = useState(true);
+  const gridRef = useRef<HTMLDivElement>(null);
   const list = asc ? episodes : [...episodes].reverse();
+  useLayoutEffect(() => {
+    const activeEl = gridRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    activeEl?.scrollIntoView({ block: "nearest" });
+  }, [current, asc, episodes.length]);
   return (
     <div className="flex flex-col h-full">
       {bare ? (
@@ -30,12 +35,12 @@ export function EpisodesPanel({ episodes, current, onPick, onClose, bare = false
           <span className="text-[14px] font-bold text-on">选集</span>
           <span className="text-[12px] text-mut">共 {episodes.length} 集</span>
           <Button onClick={() => setAsc((v) => !v)} className="ml-auto text-[12px] text-primary pressable">{asc ? "倒序" : "正序"}</Button>
-          <Button onClick={onClose} aria-label="关闭" className="w-7 h-7 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
+          <Button onClick={onClose} aria-label="关闭" className="w-8 h-8 min-h-0 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
             <IClose size={13} />
           </Button>
         </div>
       )}
-      <div className="flex-1 scroll-y px-4 pb-4">
+      <div ref={gridRef} className="flex-1 scroll-y px-4 pb-4">
         <div className="grid grid-cols-4 gap-2">
           {list.map((e) => (
             <Button key={e.ep_num} aria-current={e.ep_num === current ? "true" : undefined} onClick={() => onPick(e.ep_num)}
@@ -140,7 +145,7 @@ export function CommentsPanel({ videoId, ep, total, kind = "video", onClose }: {
       <div className="shrink-0 flex items-center gap-2 px-4 h-12">
         <span className="text-[14px] font-bold text-on">评论</span>
         <span className="text-[12px] text-mut">{fmt(loadedTotal ?? total)}{kind === "video" ? ` · 第 ${ep} 集` : " 条"}</span>
-        <Button onClick={onClose} aria-label="关闭" className="ml-auto w-7 h-7 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
+        <Button onClick={onClose} aria-label="关闭" className="ml-auto w-8 h-8 min-h-0 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
           <IClose size={13} />
         </Button>
       </div>
@@ -212,7 +217,7 @@ export function ArticlePanel({ title, html, cover, hot, onClose }: {
       <div className="shrink-0 flex items-center gap-2 px-4 h-12">
         <span className="text-[14px] font-bold text-on">图文详情</span>
         {hot ? <span className="text-[12px] text-mut">{fmt(hot)} 热度</span> : null}
-        <Button onClick={onClose} aria-label="关闭" className="ml-auto w-7 h-7 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
+        <Button onClick={onClose} aria-label="关闭" className="ml-auto w-8 h-8 min-h-0 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
           <IClose size={13} />
         </Button>
       </div>

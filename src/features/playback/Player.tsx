@@ -18,10 +18,12 @@ import { ICompress, IExpand, ILockF, IPauseF, IPlayF, IVol, IVolMute } from "../
 
 type Props = {
   src: string;              // 原始 m3u8 地址
+  scopeKey?: string | number;
   poster?: string;          // 已处理好的封面地址（本地协议）
   autoPlay?: boolean;
   active?: boolean;
   muted?: boolean;
+  volume?: number;
   loop?: boolean;
   onEnded?: () => void;
   onPlaying?: () => void;
@@ -33,7 +35,7 @@ type Props = {
 };
 
 export default function Player({
-  src, poster, autoPlay, active = true, muted = false, loop = false, onEnded, onPlaying,
+  src, scopeKey, poster, autoPlay, active = true, muted = false, volume = 1, loop = false, onEnded, onPlaying,
   onTogglePlay, onToggleMute, controls = true, className = "", diagnosticContext = {},
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -42,7 +44,7 @@ export default function Player({
   const recoveryRef = useRef<HlsRecovery | null>(null);
   const { trace, requestSeek } = usePlayerDiagnostics(videoRef, hlsRef, { view: "post_detail", ...diagnosticContext, active, resource: mediaResource(src) });
   const activity = usePlaybackActivity(videoRef, hlsRef, { active, autoPlay: !!autoPlay, src, trace });
-  const { slotRef, wrapRef, host, full, fallback, toggleFull } = useInlinePlayerFullscreen({ active, src, videoRef, activity });
+  const { slotRef, wrapRef, host, full, fallback, toggleFull } = useInlinePlayerFullscreen({ active, src, scopeKey, videoRef, activity });
   const proxyRecovery = useProxyPlaybackRecovery(videoRef, src, activity, trace);
   const [playing, setPlaying] = useState(false);
   const [waiting, setWaiting] = useState(false);
@@ -115,7 +117,12 @@ export default function Player({
         onFatal: data => {
           const detail = `${data.type}/${data.details}/${data.response?.code ?? ""}/${String(data.reason ?? "").slice(0, 80)}`;
           (window as unknown as { __hlsErr?: string }).__hlsErr = detail;
-          setErrMsg(detail); setWaiting(false); setPlaying(false);
+          const readable = data.type === Hls.ErrorTypes.NETWORK_ERROR
+            ? "视频网络加载失败，请检查线路或重试"
+            : data.type === Hls.ErrorTypes.MEDIA_ERROR
+              ? "视频解码异常，请重试"
+              : "视频暂时无法播放，请重试";
+          setErrMsg(readable); setWaiting(false); setPlaying(false);
           if (data.type !== Hls.ErrorTypes.NETWORK_ERROR && data.type !== Hls.ErrorTypes.MEDIA_ERROR) {
             hls.destroy(); hlsRef.current = null;
           }
@@ -156,7 +163,19 @@ export default function Player({
     const video = videoRef.current;
     if (!video) return;
     video.muted = muted;
-  }, [muted]);
+  }, [muted, src]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.volume = Math.max(0, Math.min(1, volume));
+  }, [volume, src]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = rate;
+  }, [rate, src]);
 
   // iOS 内联播放：部分 WKWebView 只认 HTML 属性，不认 React 的 playsInline
   useEffect(() => {
@@ -209,7 +228,11 @@ export default function Player({
         onPlaying={() => { if (activity.isActive()) { setWaiting(false); setErrMsg(""); onPlaying?.(); } }}
         onSeeked={() => setWaiting(false)}
         onTimeUpdate={(e) => setTime((e.target as HTMLVideoElement).currentTime)}
-        onLoadedMetadata={(e) => setDuration((e.target as HTMLVideoElement).duration || 0)}
+        onLoadedMetadata={(e) => {
+          const el = e.target as HTMLVideoElement;
+          setDuration(el.duration || 0);
+          el.playbackRate = rate;
+        }}
         onEnded={() => { if (activity.isActive()) onEnded?.(); }}
         onError={() => {
           if (hlsRef.current) return;

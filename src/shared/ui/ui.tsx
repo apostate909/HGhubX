@@ -112,7 +112,7 @@ export function ToastHost() {
             {t.icon === "heart" && <IHeartF size={16} className="text-neon shrink-0" />}
             {t.icon === "star" && <IStarF size={16} className="text-amber shrink-0" />}
             {t.icon === "info" && <ISparkF size={15} className="text-cyan shrink-0" />}
-            <span className="text-[14px] text-on truncate">{t.msg}</span>
+            <span className="text-[14px] text-on leading-snug clamp-2 break-words">{t.msg}</span>
           </Surface>
         ),
       )}

@@ -107,12 +107,12 @@ function MainTabs({ wide, pageActive, covered, bottomInset }: { wide: boolean; p
     <div className={visible("home")} inert={covered || tab !== "home"} aria-hidden={!pageActive || tab !== "home"}>{mounted("home") && <Home active={pageActive && tab === "home"} bottomInset={bottomInset} />}</div>
     <div className={visible("search")} inert={covered || tab !== "search"} aria-hidden={!pageActive || tab !== "search"}>{mounted("search") && <Suspense fallback={<PageLoading />}><Search active={pageActive && tab === "search"} wide={wide} /></Suspense>}</div>
     <div className={visible("category")} inert={covered || tab !== "category"} aria-hidden={!pageActive || tab !== "category"}>{mounted("category") && <Suspense fallback={<PageLoading />}><Category wide={wide} active={pageActive && tab === "category"} /></Suspense>}</div>
-    <div className={visible("profile")} inert={covered || tab !== "profile"} aria-hidden={!pageActive || tab !== "profile"}>{mounted("profile") && <Suspense fallback={<PageLoading />}><Profile wide={wide} /></Suspense>}</div>
+    <div className={visible("profile")} inert={covered || tab !== "profile"} aria-hidden={!pageActive || tab !== "profile"}>{mounted("profile") && <Suspense fallback={<PageLoading />}><Profile wide={wide} active={pageActive && tab === "profile"} /></Suspense>}</div>
   </>;
 }
 
 function AppBody() {
-  const { platform, tab, setTab, stack, pop, loginOpen, setLoginOpen, fs, setFs, clean } = useStore();
+  const { platform, tab, setTab, stack, pop, loginOpen, setLoginOpen, fs, setFs, clean, locked } = useStore();
   const mainRef = useRef<HTMLDivElement>(null);
   const [wide, setWide] = useState(false);
 
@@ -146,7 +146,7 @@ function AppBody() {
   }, [stack.length, pop, setTab, loginOpen, setLoginOpen, fs, setFs]);
 
   const pageActive = stack.length === 0 && !loginOpen;
-  const bottomInset = fs || clean ? 0 : 74;
+  const bottomInset = fs || clean || locked ? 0 : 74;
   /* 栈页（从搜索/分类/我的进入的播放页、图文页）没有底栏，
      底部只让出安全区。之前多留了 20px，视频底边会露出一条
      「底栏」似的窄缝（底部的压暗渐变到不了屏幕最底）。 */
@@ -163,7 +163,7 @@ function AppBody() {
           </div>
         ))}
 
-        {!fs && !clean && stack.length === 0 && <TabBar />}
+        {!fs && !clean && !locked && stack.length === 0 && <TabBar />}
       </div>
     </div>
   );
@@ -192,7 +192,7 @@ function DesktopShell() {
 }
 
 function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boolean }) {
-  const { stack, pop, loginOpen, setLoginOpen, tab, setTab, platform, fs, setFs } = useStore();
+  const { stack, pop, loginOpen, setLoginOpen, tab, setTab, platform, fs, setFs, setTheater } = useStore();
   const mainRef = useRef<HTMLDivElement>(null);
   const [wide, setWide] = useState(true);
 
@@ -213,7 +213,14 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
         return;
       }
       if (loginOpen) { if (e.key === "Escape") setLoginOpen(false); return; }
-      if (e.key === "Escape") { if (runBack()) return; if (fs) { setFs(false); return; } if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; } if (stack.length) pop(); return; }
+      if (e.key === "Escape") {
+        if (runBack()) return;
+        if (fs) { setFs(false); return; }
+        if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+        if (stack.length) { pop(); return; }
+        if (theater) { setTheater(false); return; }
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
       if (e.key === "/") { e.preventDefault(); setTab("search"); return; }
       if (["1", "2", "3", "4"].includes(e.key) && !e.repeat) {
@@ -222,7 +229,7 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
     };
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
-  }, [stack.length, pop, setTab, loginOpen, setLoginOpen, fs, setFs]);
+  }, [stack.length, pop, setTab, loginOpen, setLoginOpen, fs, setFs, theater, setTheater]);
 
   const pageActive = stack.length === 0 && !loginOpen;
 

@@ -12,6 +12,7 @@ import { tracePlayback } from "../../shared/diagnostics/playbackDiagnostics";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { TagBlockMenu } from "../../shared/ui/TagBlockMenu";
 import { PreferenceStorageNotice } from "../../shared/ui/PreferenceStorageNotice";
+import { InplaceSearch } from "../search/InplaceSearch";
 import MobileHoldGuide from "./MobileHoldGuide";
 import { useFsIdle } from "./fsIdle";
 import { useMobileHoldGuide } from "./useMobileHoldGuide";
@@ -94,6 +95,7 @@ export default function Feed({
   const [vsize, setVsize] = useState({ key: "", w: 0, h: 0 });
   const [paused, setPaused] = useState(false);
   const [controlsLocked, setControlsLocked] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [rate, setRate] = useState(1);
   const [waiting, setWaiting] = useState(false);
   const [err, setErr] = useState("");
@@ -158,6 +160,11 @@ export default function Feed({
   const openTag = (tag: string) => { closePanels(); store.push({ kind: "tag", tag, name: tag }); };
 
   useEffect(() => { setTagMenu(false); }, [curId, store.lineEpoch, accountScope]);
+  useEffect(() => { if (!active) setSearching(false); }, [active]);
+  useEffect(() => {
+    store.setLocked(active && controlsLocked);
+    return () => { if (active) store.setLocked(false); };
+  }, [active, controlsLocked, store.setLocked]);
   useEffect(() => { if (blocked && mode === "home" && active) onBlocked?.(curId); }, [blocked, mode, active, curId, onBlocked]);
   useEffect(() => { if (!allowed) { setPanel(null); setTagMenu(false); } }, [allowed]);
 
@@ -267,13 +274,13 @@ export default function Feed({
         title: post?.title || "",
         cover: post?.cover || "",
         desc: post?.content || post?.desc || "",
-        author: "吃瓜",
-        authorId: -1,
+        author: post?.author?.name || "吃瓜",
+        authorId: post?.author?.id || -1,
         tags: post?.tags || [],
         score: 0,
-        like: 0,
+        like: post?.counts?.like ?? 0,
         comment: post?.counts?.comment ?? 0,
-        collect: 0,
+        collect: post?.counts?.collect ?? 0,
         episodes: [] as Episode[],
       }
     : {
@@ -488,35 +495,41 @@ export default function Feed({
 
   /* 键盘 */
   useEffect(() => {
-    if (!active || !allowed || controlsLocked || showHoldGuide) return;
+    if (!active || !allowed || controlsLocked || showHoldGuide || tagMenu || searching) return;
     const seekRelative = (delta: number) => {
       const current = videoRef.current?.el()?.currentTime ?? 0;
       videoRef.current?.seek(Math.max(0, current + delta), "keyboard_shortcut");
     };
     const fn = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-      if (panel) { if (e.key === "Escape") setPanel(null); return; }
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || e.isComposing) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (panel) { if (e.key === "Escape" && !e.repeat) setPanel(null); return; }
+      if (e.key === "ArrowLeft") { e.preventDefault(); seekRelative(-5); return; }
+      if (e.key === "ArrowRight") { e.preventDefault(); seekRelative(5); return; }
+      if (e.repeat) return;
       switch (e.key) {
         case "ArrowDown": e.preventDefault(); stepDir(1); break;
         case "ArrowUp": e.preventDefault(); stepDir(-1); break;
-        case " ": e.preventDefault(); videoRef.current?.toggle(); break;
-        case "ArrowLeft": e.preventDefault(); seekRelative(-5); break;
-        case "ArrowRight": e.preventDefault(); seekRelative(5); break;
+        case " ":
+          if (t?.closest?.('button, summary, [role="button"], a[href], select')) return;
+          e.preventDefault();
+          videoRef.current?.toggle();
+          break;
         case "f": case "F": toggleFull(); break;
         case "t": case "T": setTheater((v) => !v); break;
         case "m": case "M": setMuted((v) => !v); break;
         case "l": case "L": void onLike(); break;
         case "s": case "S": void onFav(); break;
         case "c": case "C": setPanel("comments"); break;
-        case "e": case "E": setPanel("episodes"); break;
+        case "e": case "E": if (kind === "video") setPanel("episodes"); break;
         default: break;
       }
     };
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, allowed, controlsLocked, showHoldGuide, panel, index, stepDir, accountScope, curEp, kind, liked, collected, likePending, collectPending]);
+  }, [active, allowed, controlsLocked, showHoldGuide, tagMenu, searching, panel, index, stepDir, accountScope, curEp, kind, liked, collected, likePending, collectPending]);
 
   /* 安卓返回键：面板打开时先关面板（按活跃实例栈式注册，不覆盖其他页面拦截器） */
   useEffect(() => {
@@ -599,8 +612,8 @@ export default function Feed({
                     onPointerDown={onDown} onPointerMove={onMove} onPointerUp={(e) => onUp(false, e)} onPointerCancel={(e) => onUp(true, e)} onLostPointerCapture={(e) => onUp(true, e)}>
                     {/* 老 WebView 不认识 inset 简写；四边写法保证缩放舞台铺满（#138）。 */}
                     <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, transform: isDesktop ? undefined : `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.s})`, transformOrigin: "center center", transition: isDesktop || zoom.g ? "none" : "transform .18s ease-out" }}>
-                      <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay active={active && !tagMenu && !showHoldGuide} muted={muted}
-                        diagnosticContext={{ active: active && !tagMenu && !showHoldGuide, view: mode, kind, video_id: curId, episode: curEp }}
+                      <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay active={active && !tagMenu && !showHoldGuide && !searching} muted={muted}
+                        diagnosticContext={{ active: active && !tagMenu && !showHoldGuide && !searching, view: mode, kind, video_id: curId, episode: curEp }}
                         volume={volume} rate={effRate}
                         measurementKey={measurementKey}
                         fit={!isDesktop && landscapeVideo && !fs && !vpLandscape ? portraitFit : "contain"}
@@ -667,7 +680,8 @@ export default function Feed({
           holdSpeed={holdSpeed} holdSlow={holdSlow} speedLock={speedLock} setSpeedLock={setSpeedLock} lockArmed={lockArmed}
           muted={muted} setMuted={setMuted} volume={volume} setVolume={setVolume} swipeEp={swipeEp} setSwipeEp={setSwipeEp}
           playKey={playKey} curId={curId} curEp={curEp} index={index} effectiveLength={effectiveVideoIds.length}
-          kind={kind} meta={meta} episodes={episodes} related={related} follows={store.follows} followPending={followPending}
+          kind={kind} meta={meta} likeCount={likeCount} collectCount={collectCount}
+          episodes={episodes} related={related} follows={store.follows} followPending={followPending}
           post={post} articleHtml={articleHtml} panel={panel} setPanel={setPanel}
           barPct={barPct} onBarDown={onBarDown} onBarMove={onBarMove} onBarUp={onBarUp}
           pickEp={pickEp} go={go} togglePip={togglePip} lockControls={lockControls} toggleFull={toggleFull} exitFs={exitFs}
@@ -678,11 +692,17 @@ export default function Feed({
       <FeedMobileTopTools
         isDesktop={isDesktop} controlsLocked={controlsLocked} active={active} fs={fs} idle={idle}
         rotated={rotated} clean={clean} muted={muted} setMuted={setMuted}
-        lockControls={lockControls} onSearchTab={() => store.setTab("search")}
+        lockControls={lockControls}
+        onSearchTab={() => { if (mode === "context") setSearching(true); else store.setTab("search"); }}
       />
+      {searching && active && (
+        <InplaceSearch kind={kind} wide={isDesktop} onClose={() => setSearching(false)}
+          onOpenVideo={(v, list, kw) => store.push({ kind: "feed", videoIds: list.map(x => x.id), index: list.findIndex(x => x.id === v.id), title: kw ? `搜索 · ${kw}` : "搜索" })}
+          onOpenPost={(p) => store.push({ kind: "post", id: p.id })} />
+      )}
       <TagBlockMenu open={active && tagMenu} tags={meta.tags} onClose={() => setTagMenu(false)} onSettings={openPreferences} />
       {!isDesktop && <MobileHoldGuide open={showHoldGuide} onClose={holdGuide.dismiss} target={holdTargetRef} bottomInset={bottomInset} />}
-      {controlsLocked && <PlaybackLock active={active} onUnlock={() => { setControlsLocked(false); wake(); }} />}
+      {controlsLocked && <PlaybackLock active={active} rotated={rotated} immersive={!isDesktop && fs && !rotated} onUnlock={() => { setControlsLocked(false); wake(); }} />}
     </div>
   );
 }

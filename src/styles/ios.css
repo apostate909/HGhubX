@@ -37,7 +37,11 @@ html.theme-light {
   --control-shadow:0 2px 6px rgb(40 36 28 / .08),inset 0 1px 0 rgb(255 255 255 / .80);
   --surface-shadow:0 8px 24px rgb(40 36 28 / .07),inset 0 1px 0 rgb(255 255 255 / .72);
 }
-.ios-button { min-block-size:36px; touch-action:manipulation; -webkit-tap-highlight-color:transparent; transition:background-color .16s,color .16s,box-shadow .16s,opacity .16s; }
+@layer components {
+  .ios-button { min-height:36px; }
+  .ios-button:not([data-card],.ios-icon-button,.ios-switch,.ios-mobile-nav-item,.ios-overlay-backdrop,.win-caption-tool) { border-radius:var(--control-radius); }
+}
+.ios-button { touch-action:manipulation; -webkit-tap-highlight-color:transparent; transition:background-color .16s,color .16s,box-shadow .16s,opacity .16s; }
 .ios-button svg { flex-shrink:0; }
 .ios-button:not([data-card]):active { opacity:.66; }
 .ios-button:disabled { opacity:.45; cursor:default; }
@@ -256,6 +260,7 @@ html.theme-light {
   --ios-spring:var(--motion-spring);
   --p-canvas:#121212; --p-bg:#191919; --p-s1:#242424; --p-s2:#2d2d2d; --p-s3:#373737; --p-s4:#505050;
   --p-on:#f4f1eb; --p-mut:#c2bdb5; --p-dim:#a59f97; --p-primary:#f4f1eb; --p-on-primary:#191919;
+  --p-accent:#ff8577; --p-cyan:#5cc8ff;
   --p-pc:#45302c; --p-on-pc:#ffe1da; --p-sec:#302a28; --p-on-sec:#ffe1da;
   --p-like:#ff8b79; --p-star:#e8c078; --p-success:#8bd3a0; --p-danger:#ff928b; --p-on-danger:#3b100d;
   --p-glow:rgb(240 109 95 / .2); --p-hover:rgb(255 255 255 / .07); --p-tint:rgb(240 109 95 / .16);
@@ -270,7 +275,8 @@ html.theme-light {
   --motion-paper-2:#e5e2db;
   --p-canvas:#e8e6e0; --p-bg:var(--motion-paper); --p-s1:#f7f6f1; --p-s2:#f1efe9;
   --p-s3:var(--motion-paper-2); --p-s4:#d2cfc7; --p-on:#25241f; --p-mut:#625f58; --p-dim:#706d65;
-  --p-primary:var(--motion-ink); --p-on-primary:#fff; --p-pc:#fbe5e0; --p-on-pc:#8e352d;
+  --p-primary:var(--motion-ink); --p-on-primary:#fff; --p-accent:#c24135; --p-cyan:#0072b2;
+  --p-pc:#fbe5e0; --p-on-pc:#8e352d;
   --p-sec:#f3e5e0; --p-on-sec:#7c2f28; --p-like:var(--motion-accent); --p-star:#b57528;
   --p-success:#4f8d65; --p-danger:#c64942; --p-on-danger:#fff; --p-glow:rgb(240 109 95 / .18);
   --p-hover:rgb(25 25 25 / .06); --p-tint:rgb(240 109 95 / .14); --p-shadow:0 18px 42px rgb(36 32 28 / .10);
@@ -304,9 +310,10 @@ body { background:var(--motion-paper); }
 .ios-setting-group>:not(:last-child) { border-bottom:1px solid var(--ios-edge); }
 
 .ios-button:not([data-card],.ios-icon-button,.ios-switch,.ios-mobile-nav-item,.ios-overlay-backdrop,.win-caption-tool) {
-  border-radius:var(--control-radius);
   transition:scale .24s var(--motion-spring),box-shadow .2s ease,background-color .2s ease,color .2s ease,opacity .2s ease;
 }
+.text-primary,.ios-rank-number.is-top,.ios-rank-metric { color:var(--p-accent); }
+.ios-rank-meter span { background:var(--p-accent); }
 .ios-button:not(:disabled):not(.ios-overlay-backdrop):not(.ios-switch):active { scale:.965; opacity:1; }
 .ios-button-primary,.brand-grad { background:var(--p-primary); color:var(--p-on-primary); box-shadow:var(--control-shadow); }
 .ios-icon-button:active { scale:.94; }
