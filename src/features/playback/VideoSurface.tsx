@@ -239,7 +239,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
       ref={videoRef}
       poster={poster}
       playsInline
-      preload="auto"
+      preload={active ? "auto" : "metadata"}
       muted={muted}
       loop={loop}
       onClick={onClick}

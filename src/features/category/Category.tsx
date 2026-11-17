@@ -48,11 +48,13 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
     try {
       if (key === "posts") {
         const result = await api.postCategory("remen-chigua", 1, 8, "latest");
+        if (requestEpoch !== lineEpochRef.current) { retryKeys.current.add(key); return; }
         if (mounted.current) setPosts(result?.items || []);
       } else {
         const result = key === "original"
           ? await api.originalVideos("all", 1, 8, "new")
           : await api.category(key, 1, 8, "latest");
+        if (requestEpoch !== lineEpochRef.current) { retryKeys.current.add(key); return; }
         if (mounted.current) setRows(m => ({ ...m, [key]: result?.items || [] }));
       }
     } catch (error) {
@@ -76,10 +78,17 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
     void loadPreview("posts");
   }, [active, loadPreview]);
 
-  /* 线路切换后：已打开过的分类里，加载失败的栏目在新线路上重试一次 */
+  /* 线路切换后：已打开过的分类在新线路上重新获取，避免残留旧线路数据 */
+  const prevEpoch = useRef(lineEpoch);
   useEffect(() => {
-    if (!lineEpoch || !started.current) return;
-    Object.entries(errorsRef.current).forEach(([key, msg]) => { if (msg) void loadPreview(key); });
+    if (prevEpoch.current === lineEpoch) return;
+    prevEpoch.current = lineEpoch;
+    if (!started.current) return;
+    setRows({});
+    setPosts([]);
+    setErrors({});
+    CHANNELS.forEach(c => { void loadPreview(c.cate); });
+    void loadPreview("posts");
   }, [lineEpoch, loadPreview]);
 
   return (

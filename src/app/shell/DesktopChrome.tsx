@@ -18,15 +18,17 @@ export function DesktopTitleBar({ collapsed, onToggle }: { collapsed: boolean; o
   const [nativeFs, setNativeFs] = useState(false);
 
   useEffect(() => {
+    let disposed = false;
     let un: (() => void) | undefined;
     const sync = () => {
-      appWindow().isMaximized().then(setMaxed).catch(() => {});
-      appWindow().isFullscreen().then(setNativeFs).catch(() => {});
+      if (disposed) return;
+      appWindow().isMaximized().then((v) => { if (!disposed) setMaxed(v); }).catch(() => {});
+      appWindow().isFullscreen().then((v) => { if (!disposed) setNativeFs(v); }).catch(() => {});
     };
     sync();
     appWindow().onResized(sync)
-      .then((f: () => void) => { un = f; }).catch(() => {});
-    return () => { un?.(); };
+      .then((f: () => void) => { if (disposed) f(); else un = f; }).catch(() => {});
+    return () => { disposed = true; un?.(); };
   }, []);
 
   return (

@@ -93,7 +93,7 @@ function StackPageContent({ page, onBack, wide, top, bottomInset, loginOpen }: {
 }
 
 /* ============ 应用主体 ============ */
-function MainTabs({ wide, pageActive, bottomInset }: { wide: boolean; pageActive: boolean; bottomInset: number }) {
+function MainTabs({ wide, pageActive, covered, bottomInset }: { wide: boolean; pageActive: boolean; covered: boolean; bottomInset: number }) {
   const { tab } = useStore();
   const [visited, setVisited] = useState<ReadonlySet<Tab>>(() => new Set());
   useEffect(() => {
@@ -102,11 +102,12 @@ function MainTabs({ wide, pageActive, bottomInset }: { wide: boolean; pageActive
   const mounted = (key: Tab) => visited.has(key) || (pageActive && tab === key);
   const visible = (key: Tab) => tab === key ? `absolute inset-0 ${key === "home" ? "" : "ios-tab-active"}` : "absolute inset-0 hidden pointer-events-none";
   // First visits mount on demand; subsequent switches preserve queries, scroll and playback state.
+  // DialogFrame's syncBackground() owns modal inertness so portals inside fullscreenElement never inherit ancestor inert.
   return <>
-    <div className={visible("home")} inert={!pageActive || tab !== "home"} aria-hidden={!pageActive || tab !== "home"}>{mounted("home") && <Home active={pageActive && tab === "home"} bottomInset={bottomInset} />}</div>
-    <div className={visible("search")} inert={!pageActive || tab !== "search"} aria-hidden={!pageActive || tab !== "search"}>{mounted("search") && <Suspense fallback={<PageLoading />}><Search active={pageActive && tab === "search"} wide={wide} /></Suspense>}</div>
-    <div className={visible("category")} inert={!pageActive || tab !== "category"} aria-hidden={!pageActive || tab !== "category"}>{mounted("category") && <Suspense fallback={<PageLoading />}><Category wide={wide} active={pageActive && tab === "category"} /></Suspense>}</div>
-    <div className={visible("profile")} inert={!pageActive || tab !== "profile"} aria-hidden={!pageActive || tab !== "profile"}>{mounted("profile") && <Suspense fallback={<PageLoading />}><Profile wide={wide} /></Suspense>}</div>
+    <div className={visible("home")} inert={covered || tab !== "home"} aria-hidden={!pageActive || tab !== "home"}>{mounted("home") && <Home active={pageActive && tab === "home"} bottomInset={bottomInset} />}</div>
+    <div className={visible("search")} inert={covered || tab !== "search"} aria-hidden={!pageActive || tab !== "search"}>{mounted("search") && <Suspense fallback={<PageLoading />}><Search active={pageActive && tab === "search"} wide={wide} /></Suspense>}</div>
+    <div className={visible("category")} inert={covered || tab !== "category"} aria-hidden={!pageActive || tab !== "category"}>{mounted("category") && <Suspense fallback={<PageLoading />}><Category wide={wide} active={pageActive && tab === "category"} /></Suspense>}</div>
+    <div className={visible("profile")} inert={covered || tab !== "profile"} aria-hidden={!pageActive || tab !== "profile"}>{mounted("profile") && <Suspense fallback={<PageLoading />}><Profile wide={wide} /></Suspense>}</div>
   </>;
 }
 
@@ -154,10 +155,10 @@ function AppBody() {
   return (
     <div className={`absolute inset-0 flex bg-canvas plat-${platform}`}>
       <div ref={mainRef} className="relative flex-1 min-w-0 overflow-hidden win-main">
-        <MainTabs wide={wide} pageActive={pageActive} bottomInset={bottomInset} />
+        <MainTabs wide={wide} pageActive={pageActive} covered={stack.length > 0} bottomInset={bottomInset} />
 
         {stack.map((p, i) => (
-          <div key={p.key} inert={i !== stack.length - 1 || loginOpen} aria-hidden={i !== stack.length - 1 || loginOpen} className="absolute inset-0 z-30 bg-bg a-page-in" style={{ boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }}>
+          <div key={p.key} inert={i !== stack.length - 1} aria-hidden={i !== stack.length - 1 || loginOpen} className="absolute inset-0 z-30 bg-bg a-page-in" style={{ boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }}>
             <StackPage page={p} onBack={pop} wide={wide} top={i === stack.length - 1} bottomInset={stackInset} loginOpen={loginOpen} />
           </div>
         ))}
@@ -229,9 +230,9 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
     <div className={`absolute inset-0 flex bg-canvas plat-${platform}`}>
       {!theater && <DesktopRail collapsed={collapsed} />}
       <div ref={mainRef} className={`relative flex-1 min-w-0 overflow-hidden win-main ${theater ? "is-theater-main" : ""}`}>
-        <MainTabs wide={wide} pageActive={pageActive} bottomInset={14} />
+        <MainTabs wide={wide} pageActive={pageActive} covered={stack.length > 0} bottomInset={14} />
         {stack.map((p, i) => (
-          <div key={p.key} inert={i !== stack.length - 1 || loginOpen} aria-hidden={i !== stack.length - 1 || loginOpen} className="absolute inset-0 z-30 bg-bg win-page-in" style={{ boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }}>
+          <div key={p.key} inert={i !== stack.length - 1} aria-hidden={i !== stack.length - 1 || loginOpen} className="absolute inset-0 z-30 bg-bg win-page-in" style={{ boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }}>
             <StackPage page={p} onBack={pop} wide={wide} top={i === stack.length - 1} bottomInset={14} loginOpen={loginOpen} />
           </div>
         ))}

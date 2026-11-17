@@ -148,7 +148,7 @@ export function FeedPlayerShellChrome({
       )}
 
       {/* 移动端全屏进度条，普通模式的进度条位于标题下方 */}
-      {!isDesktop && fs && !idle && (
+      {!isDesktop && fs && (!idle || barPct !== null) && (
         <div
           className="absolute inset-x-0 z-30 px-4"
           style={{

@@ -1,5 +1,6 @@
 import { Button, Image, Surface } from "./ios/controls";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { cover, platform } from "../api/api";
 export { Sheet, Modal } from "./ios/overlays";
 import { useStore } from "../model/store";
@@ -59,7 +60,13 @@ export function Empty({ icon, title, sub, action, onAction }: {
 /* ——— Toast ——— */
 export function ToastHost() {
   const { toasts } = useStore();
-  return (
+  const [fsHost, setFsHost] = useState<Element | null>(() => (typeof document !== "undefined" ? document.fullscreenElement : null));
+  useEffect(() => {
+    const onFs = () => setFsHost(document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+  const content = (
     <div role="status" aria-live="polite" aria-atomic="true" className="ios-toast-host absolute inset-x-0 z-[300] flex flex-col items-center gap-2 pointer-events-none px-6" style={{ bottom: "calc(var(--sab, 0px) + 96px)" }}>
       {toasts.map((t) =>
         t.line ? (
@@ -111,6 +118,7 @@ export function ToastHost() {
       )}
     </div>
   );
+  return fsHost ? createPortal(content, fsHost) : content;
 }
 
 /* ——— 图片（骨架 + 渐显，自动走本地解密协议） ——— */

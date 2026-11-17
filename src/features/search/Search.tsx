@@ -26,7 +26,11 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
   const [hotLoading, setHotLoading] = useState(false);
   const [hotError, setHotError] = useState<string | null>(null);
   const hotBusy = useRef(false);
+  const hotSeq = useRef(0);
+  const hotEpoch = useRef(lineEpoch);
   const hotLoadedAt = useRef(0);
+  const aliveRef = useRef(true);
+  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
 
   /* 移动端进入搜索页不自动聚焦：iOS 会立刻弹键盘遮住内容（#20）。
      桌面端没有软键盘，聚焦便于直接打字。 */
@@ -34,30 +38,39 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
     if (active && !isMobile) inputRef.current?.focus();
   }, [active]);
 
-  const refreshHot = async () => {
-    if (hotBusy.current) return;
+  const refreshHot = async (force = false) => {
+    if (hotBusy.current && !force) return;
+    const seq = ++hotSeq.current;
+    const reqEpoch = hotEpoch.current;
     hotBusy.current = true;
     setHotLoading(true);
     setHotError(null);
     try {
       const res = await api.searchHot();
+      if (!aliveRef.current || seq !== hotSeq.current || reqEpoch !== hotEpoch.current) return;
       setHotVideos(res.items);
       hotLoadedAt.current = Date.now();
     } catch (e) {
+      if (!aliveRef.current || seq !== hotSeq.current || reqEpoch !== hotEpoch.current) return;
       setHotError(e instanceof Error ? e.message : "热搜榜加载失败，请重试");
     } finally {
-      hotBusy.current = false;
-      setHotLoading(false);
+      if (seq === hotSeq.current) {
+        hotBusy.current = false;
+        if (aliveRef.current) setHotLoading(false);
+      }
     }
   };
-  const hotEpoch = useRef(lineEpoch);
   useEffect(() => {
-    if (hotEpoch.current !== lineEpoch) {
+    const epochChanged = hotEpoch.current !== lineEpoch;
+    if (epochChanged) {
       hotEpoch.current = lineEpoch;
       hotLoadedAt.current = 0;
+      hotBusy.current = false;
+      setHotVideos([]);
+      setHotError(null);
     }
     // 切换主导航时短暂复用榜单；手动刷新或切线路后重新获取官网内容。
-    if (active && Date.now() - hotLoadedAt.current > 60_000) void refreshHot();
+    if (active && (epochChanged || Date.now() - hotLoadedAt.current > 60_000)) void refreshHot(epochChanged);
   }, [active, lineEpoch]);
 
   const changeTab = (next: "video" | "post") => {
@@ -204,14 +217,15 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
   const [tab, setTab] = useState<RankKind>("hot");
   const [states, setStates] = useState<Partial<Record<RankKind, RankState>>>({});
   const cache = useRef<Partial<Record<RankKind, RankState>>>({});
-  const pending = useRef(new Set<RankKind>());
+  const pending = useRef(new Set<string>());
   const alive = useRef(true);
   const epochRef = useRef(lineEpoch);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const load = async (kind: RankKind) => {
-    const reqEpoch = lineEpoch;
-    if (pending.current.has(kind)) return;
-    pending.current.add(kind);
+    const reqEpoch = epochRef.current;
+    const inflightKey = `${reqEpoch}:${kind}`;
+    if (pending.current.has(inflightKey)) return;
+    pending.current.add(inflightKey);
     const previous = cache.current[kind];
     const update = (state: RankState) => {
       cache.current[kind] = state;
@@ -226,13 +240,14 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
       if (reqEpoch !== epochRef.current) return;
       update({ items: previous?.items ?? [], loadedAt: previous?.loadedAt ?? 0, loading: false,
         error: error instanceof Error ? error.message : "榜单加载失败，请重试" });
-    } finally { pending.current.delete(kind); }
+    } finally { pending.current.delete(inflightKey); }
   };
   useEffect(() => {
     if (epochRef.current !== lineEpoch) {
       epochRef.current = lineEpoch;
       cache.current = {};
       pending.current.clear();
+      setStates({});
     }
     if (!cache.current[tab]?.loadedAt || Date.now() - cache.current[tab]!.loadedAt > 60_000) void load(tab);
     // eslint-disable-next-line react-hooks/exhaustive-deps

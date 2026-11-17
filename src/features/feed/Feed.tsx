@@ -6,7 +6,7 @@ import { api, cover, isMobile, logLine } from "../../shared/api/api";
 import type { Detail, Episode, PlayInfo, Post, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
 import { Img } from "../../shared/ui/ui";
-import { setBackHandler } from "../../shared/lib/back";
+import { registerOverlayBack } from "../../shared/lib/back";
 import { PlaybackLock, VideoSurface, createPlaybackClock, type VideoHandle } from "../playback";
 import { tracePlayback } from "../../shared/diagnostics/playbackDiagnostics";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
@@ -56,6 +56,7 @@ export default function Feed({
   const [tagMenu, setTagMenu] = useState(false);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [tagErrors, setTagErrors] = useState<Record<string, string>>({});
+  const [originEpoch, setOriginEpoch] = useState(0);
   const playRequests = useRef(new Map<string, Promise<PlayInfo>>());
   const requestPlay = useCallback((id: number, episode: number) => {
     const key = `${accountScope}:${store.lineEpoch}:${id}:${episode}`;
@@ -71,10 +72,11 @@ export default function Feed({
   }, [accountScope, store.lineEpoch]);
 
   const { details, setDetails, detailsRef, posts, setPosts, requestDetail, effectiveVideoIds } = useFeedDetails({
-    videoIds, mode, kind, accountScope, lineEpoch: store.lineEpoch, filtering, revision,
+    videoIds, mode, kind, accountScope, lineEpoch: store.lineEpoch, originEpoch, filtering, revision,
     blockReason, checked, tagErrors,
   });
 
+  const playerRootRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<VideoHandle>(null);
   const holdTargetRef = useRef<HTMLDivElement>(null);
@@ -107,13 +109,14 @@ export default function Feed({
   const lastSaveRef = useRef(0);
   const theater = store.theater;
   const setTheater = store.setTheater;
-  const fs = store.fs;
+  const fs = active && store.fs;
   const clean = store.clean;
   const setClean = store.setClean;
   const setFs = store.setFs;
 
+  const [barScrubbing, setBarScrubbing] = useState(false);
   /* 控件闲置隐藏：桌面 2.8s；移动全屏按设置秒数（#146-3） */
-  const { idle, setIdle, wake, arm } = useFsIdle(isDesktop, fs, paused, store.fsIdleSecs, boxRef);
+  const { idle, setIdle, wake, arm } = useFsIdle(isDesktop, fs, paused, store.fsIdleSecs, boxRef, barScrubbing);
 
   const episodesByVideo = useMemo(() => {
     const counts: Record<number, number> = {};
@@ -133,7 +136,7 @@ export default function Feed({
     idsRef, index, renderIndex, fullscreen, vpLandscape, portraitFit, setPortraitFit,
     onScroll, go, stepDir, canStep, toggleFull, enterFs, exitFs,
   } = useFeedViewport({
-    boxRef, videoRef, pinchRef, videoIds, effectiveVideoIds, startIndex, mode, kind, active,
+    playerRootRef, boxRef, videoRef, pinchRef, videoIds, effectiveVideoIds, startIndex, mode, kind, active,
     isItemAllowed, isDesktop, fs, setFs, setClean, paused, wake, swipeEp, epMap, setEpMap,
     episodesByVideo, setPanel, onNearEnd,
   });
@@ -188,20 +191,40 @@ export default function Feed({
     && !!playUrl && duration > 0 && !err && !panel && !tagMenu && !controlsLocked;
 
   useEffect(() => {
-    const retry = () => {
+    const onProxyChanged = () => {
       setErr("");
-      setWaiting(true);
       // Resolved media is retried in VideoSurface. Only an unresolved API call
       // needs another lookup, so a working stream keeps its episode and position.
-      if (!playUrl) setProxyRetry(value => value + 1);
+      if (!playUrl) {
+        if (active) setWaiting(true);
+        setProxyRetry(value => value + 1);
+      } else if (active) {
+        setWaiting(true);
+      }
     };
-    window.addEventListener("hg:proxy-changed", retry);
-    window.addEventListener("hg:line-changed", retry);
+    const onLineChanged = () => {
+      setOriginEpoch(value => value + 1);
+      // Keep an actively playing, healthy stream uninterrupted while purging all
+      // prefetched/inactive/errored URLs from the previous line.
+      if (active && playingKey === playKey && !err && playUrl) {
+        setPlayUrls(prev => (prev[playKey] ? { [playKey]: prev[playKey] } : {}));
+        setHevcUrls(prev => (prev[playKey] ? { [playKey]: prev[playKey] } : {}));
+        return;
+      }
+      setPlayUrls({});
+      setHevcUrls({});
+      setPlayingKey("");
+      setErr("");
+      if (active) setWaiting(true);
+      setProxyRetry(value => value + 1);
+    };
+    window.addEventListener("hg:proxy-changed", onProxyChanged);
+    window.addEventListener("hg:line-changed", onLineChanged);
     return () => {
-      window.removeEventListener("hg:proxy-changed", retry);
-      window.removeEventListener("hg:line-changed", retry);
+      window.removeEventListener("hg:proxy-changed", onProxyChanged);
+      window.removeEventListener("hg:line-changed", onLineChanged);
     };
-  }, [playUrl]);
+  }, [active, playUrl, playingKey, playKey, err]);
 
   useEffect(() => { videoRef.current?.trace("page.active", { active, view: mode, video_id: curId, episode: curEp }); }, [active, mode, curId, curEp]);
   const episodes = detail?.episodes || [];
@@ -279,10 +302,11 @@ export default function Feed({
     scrub, barRef, barPct, onDown, onMove, onUp, onBarDown, onBarMove, onBarUp,
   } = useFeedTouchGestures({
     boxRef, videoRef, pinchRef, playbackClock, isDesktop, active, controlsLocked, showHoldGuide,
-    rotated, fs, clean, setClean, idle, setIdle, arm, swipeEp, kind, curId, epMap, setEpMap,
+    rotated, fs, clean, setClean, idle, setIdle, arm, wake, swipeEp, kind, curId, epMap, setEpMap,
     episodesLength: episodes.length, effectiveLength: effectiveVideoIds.length, go,
     duration, playUrl, playKey, openTagMenu, setPanel, setTagMenu, toast,
   });
+  useEffect(() => { setBarScrubbing(barPct !== null); }, [barPct]);
 
   const {
     liked, collected, likePending, collectPending, followPending, heartBurst,
@@ -300,12 +324,12 @@ export default function Feed({
 
   /* 若用户在视频首帧宽高解析出来前已点进全屏，解析出横屏后自动补发横屏方向请求 */
   useEffect(() => {
-    if (isDesktop || !fs || !landscapeVideo) return;
+    if (!active || isDesktop || !fs || !landscapeVideo) return;
     try { void invoke("set_orientation", { landscape: true }); } catch { /* ignore */ }
     try {
       (screen.orientation as unknown as { lock?: (o: string) => Promise<void> })?.lock?.("landscape")?.catch(() => {});
     } catch { /* ignore */ }
-  }, [isDesktop, fs, landscapeVideo]);
+  }, [active, isDesktop, fs, landscapeVideo]);
 
   /* With filtering enabled, details are the gate: no media is requested before tags settle. */
   useEffect(() => {
@@ -356,11 +380,11 @@ export default function Feed({
     requestPlay(curId, curEp)
       .then((info) => {
         if (!alive || !isCurrentPlayback()) return;
-        const streamUrl = info?.streams?.main || info?.video_url;
         const hevcStream = info?.streams?.hevc || info?.video_url_hevc || "";
+        const streamUrl = info?.streams?.main || info?.video_url || hevcStream;
         const raw = info as unknown as Record<string, unknown>;
         const streams = (raw.streams ?? {}) as Record<string, unknown>;
-        const streamKind = streams.main ? "main" : info?.video_url ? "video_url" : streams.hevc ? "hevc" : "-";
+        const streamKind = streams.main ? "main" : info?.video_url ? "video_url" : hevcStream ? "hevc" : "-";
         let host = "?";
         try { host = new URL(streamUrl || "").host || "?"; } catch { /* 空地址或非 URL */ }
         logLine(
@@ -393,8 +417,8 @@ export default function Feed({
     requestPlay(curId, nextEpisode)
       .then((info) => {
         if (!alive || !playGuard.current.allowed || playGuard.current.permissionKey !== permissionKey) return;
-        const u = info?.streams?.main || info?.video_url;
         const h = info?.streams?.hevc || info?.video_url_hevc || "";
+        const u = info?.streams?.main || info?.video_url || h;
         if (u) setPlayUrls((m) => ({ ...m, [key]: u }));
         if (h) setHevcUrls((m) => ({ ...m, [key]: h }));
       })
@@ -428,8 +452,8 @@ export default function Feed({
         }
         const info = await requestPlay(nextId, 1);
         if (!stillRelevant()) return;
-        const url = info?.streams?.main || info?.video_url;
         const hevc = info?.streams?.hevc || info?.video_url_hevc || "";
+        const url = info?.streams?.main || info?.video_url || hevc;
         if (url) setPlayUrls(previous => ({ ...previous, [nextKey]: url }));
         if (hevc) setHevcUrls(previous => ({ ...previous, [nextKey]: hevc }));
       } catch {
@@ -494,12 +518,11 @@ export default function Feed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, allowed, controlsLocked, showHoldGuide, panel, index, stepDir, accountScope, curEp, kind, liked, collected, likePending, collectPending]);
 
-  /* 安卓返回键：面板打开时先关面板 */
+  /* 安卓返回键：面板打开时先关面板（按活跃实例栈式注册，不覆盖其他页面拦截器） */
   useEffect(() => {
-    if (!panel) { setBackHandler(null); return undefined; }
-    setBackHandler(() => { setPanel(null); return true; });
-    return () => setBackHandler(null);
-  }, [panel]);
+    if (!active || !panel) return undefined;
+    return registerOverlayBack(() => { setPanel(null); return true; });
+  }, [active, panel]);
 
   const lockControls = () => { setPanel(null); setControlsLocked(true); };
   const pickEp = (ep: number) => {
@@ -539,6 +562,7 @@ export default function Feed({
 
   return (
     <div
+      ref={playerRootRef}
       className={`hg-player-ui ${rotated ? "fs-landscape" : (!isDesktop && fs ? "fs-immersive" : "absolute inset-0")} overflow-hidden bg-black player-root ${controlsLocked ? "is-locked" : ""} ${isDesktop ? "player-surface" : ""} ${theater ? "is-theater" : ""} ${isDesktop && idle ? "is-idle" : ""}`}
       data-clean={clean}
       inert={!active || undefined}

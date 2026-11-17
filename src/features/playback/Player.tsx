@@ -198,7 +198,7 @@ export default function Player({
         ref={videoRef}
         poster={poster}
         playsInline
-        preload="auto"
+        preload={active ? "auto" : "metadata"}
         muted={muted}
         loop={loop}
         className="w-full h-full object-contain bg-black"

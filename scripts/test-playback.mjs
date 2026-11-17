@@ -440,6 +440,11 @@ async function proxyRecoveryCheck(page) {
       await page.evaluate(() => window.dispatchEvent(new Event("hg:proxy-changed")));
       await page.waitForFunction(before => window.playerSeekFixture.logs.filter(e => e.event === "proxy.restored").length > before, playingRetries);
       await page.waitForFunction(time => !document.querySelector("video").paused && document.querySelector("video").currentTime >= time, playingAt);
+      if (!legacy) {
+        await page.evaluate(() => window.dispatchEvent(new Event("hg:line-changed")));
+        assert.equal(await page.locator(".spinner").count(), 0, "Background line switch must not leave a stuck loading spinner on a healthy playing stream");
+        assert(!(await page.locator("video").evaluate(v => v.paused)), "Background line switch must keep healthy stream playing");
+      }
       const logs = await getLogs(page);
       const current = logs.filter(e => e.data.video_id).map(e => e.data.video_id);
       assert(current.every(id => id === 991), "Proxy save must retain current video");
