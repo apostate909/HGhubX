@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { cover, platform } from "../api/api";
 export { Sheet, Modal } from "./ios/overlays";
-import { useStore } from "../model/store";
+import { useToasts } from "../model/store";
 import { Loader } from "./ios/effects";
 import { IBoltF, ICheck, IGlobe, IHeartF, IMinus, ISparkF, IStarF } from "./icons";
 
@@ -59,7 +59,7 @@ export function Empty({ icon, title, sub, action, onAction }: {
 
 /* ——— Toast ——— */
 export function ToastHost() {
-  const { toasts } = useStore();
+  const toasts = useToasts();
   const [fsHost, setFsHost] = useState<Element | null>(() => (typeof document !== "undefined" ? document.fullscreenElement : null));
   useEffect(() => {
     const onFs = () => setFsHost(document.fullscreenElement);

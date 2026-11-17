@@ -5,72 +5,24 @@ import { api, fmt } from "../../shared/api/api";
 import type { Paged, UserProfile, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
+import { usePaginatedList } from "../../shared/lib/usePaginatedList";
 import { Masonry } from "../../shared/ui/cards";
 import { InplaceSearch } from "../search/InplaceSearch";
 import { Avatar, Empty } from "../../shared/ui/ui";
 import { IBack, IChevronDown, IGrid, ISearch, IUser } from "../../shared/ui/icons";
 
 /** Keep pagination local to the scrolling page and reject responses from an old account/author. */
-function useUserVideos(enabled: boolean, request: (page: number) => Promise<Paged<VideoCard>>) {
+function useUserVideos(enabled: boolean, resetKey: string | number, request: (page: number) => Promise<Paged<VideoCard>>) {
   const { preferences } = useContentPreferences();
   const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
-  const [items, setItems] = useState<VideoCard[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-  const [total, setTotal] = useState<number | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const generation = useRef(0);
-  const cursor = useRef({ page: 0, pages: 1, busy: false });
-  const scroller = useRef<HTMLDivElement>(null);
-  const sentinel = useRef<HTMLDivElement>(null);
-  const loadMore = useCallback(async () => {
-    const state = cursor.current;
-    if (!enabled || state.busy || state.page >= state.pages) return;
-    const version = generation.current;
-    const next = state.page + 1;
-    state.busy = true;
-    setLoading(true); setErr("");
-    try {
-      const response = await request(next);
-      if (version !== generation.current) return;
-      const incoming = response?.items || [];
-      setItems(previous => {
-        const seen = new Set(previous.map(item => item.id));
-        const unique = incoming.filter(item => {
-          if (seen.has(item.id)) return false;
-          seen.add(item.id);
-          return true;
-        });
-        return [...previous, ...unique];
-      });
-      state.page = next;
-      state.pages = response?.pagination?.pages || next;
-      setTotal(Number.isFinite(response?.pagination?.total) ? response.pagination.total : null);
-      setHasMore(next < state.pages && incoming.length > 0);
-      if (!incoming.length) state.pages = next;
-    } catch (error) {
-      if (version === generation.current) setErr(error instanceof Error ? error.message : "加载失败，请重试");
-    } finally {
-      if (version === generation.current) { state.busy = false; setLoading(false); }
-    }
-  }, [enabled, request]);
-  useEffect(() => {
-    generation.current++;
-    cursor.current = { page: 0, pages: 1, busy: false };
-    setItems([]); setErr(""); setTotal(null); setHasMore(false); setLoading(false);
-    if (scroller.current) scroller.current.scrollTop = 0;
-    if (enabled) void loadMore();
-    return () => { generation.current++; };
-  }, [enabled, loadMore]);
-  useEffect(() => {
-    if (!enabled || filtering || loading || err || !hasMore || !sentinel.current || !scroller.current) return;
-    const observer = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting) void loadMore();
-    }, { root: scroller.current, rootMargin: "200px" });
-    observer.observe(sentinel.current);
-    return () => observer.disconnect();
-  }, [enabled, loading, err, hasMore, loadMore, filtering]);
-  return { items, loading, err, total, hasMore, loadMore, scroller, sentinel };
+  return usePaginatedList<VideoCard>({
+    enabled,
+    filtering,
+    resetKey,
+    rootMargin: "200px",
+    getId: (item) => item.id,
+    request,
+  });
 }
 
 type VideoState = ReturnType<typeof useUserVideos>;
@@ -101,8 +53,8 @@ function FollowingContent({ onBack, wide }: { onBack: () => void; wide: boolean 
   const creatorsRef = useRef(creators);
   creatorsRef.current = creators;
   // Identity belongs in the dependency list: switching accounts discards the previous feed.
-  const request = useCallback((page: number) => api.following(page, 20), [accountScope]);
-  const state = useUserVideos(!!user, request);
+  const request = useCallback((page: number) => api.following(page, 20), []);
+  const state = useUserVideos(!!user, accountScope, request);
   const followSlice = follows.slice(0, 24);
   const followKey = followSlice.join(",");
 
@@ -192,7 +144,7 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
   const mounted = useRef(false);
   const followVersion = useRef(0);
   const request = useCallback((page: number) => api.userVideos(id, page, 20), [id]);
-  const state = useUserVideos(true, request);
+  const state = useUserVideos(true, `${accountScope}:${id}`, request);
 
   useEffect(() => {
     mounted.current = true;

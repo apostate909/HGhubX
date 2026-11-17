@@ -109,9 +109,13 @@ export function TopicsPage({ onBack, wide }: { onBack: () => void; wide: boolean
 /* ================= 专题详情页 ================= */
 export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: string; onBack: () => void; wide: boolean }) {
   const { push, lineEpoch } = useStore();
+  const { preferences } = useContentPreferences();
+  const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
   const [searching, setSearching] = useState(false);
   const [introExpanded, setIntroExpanded] = useState(false);
   const introId = useId();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<{
     topic: TopicDetail["topic"] | null;
     related: TopicCard[];
@@ -185,6 +189,17 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
   const { topic, related, videos, page, pages, total, loading, loadingMore, error } = state;
   const hasMore = page < pages;
 
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || filtering || loading || loadingMore || error || !hasMore || !scrollRef.current) return;
+    const io = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) loadMore();
+    }, { root: scrollRef.current, rootMargin: "260px" });
+    io.observe(el);
+    return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtering, loading, loadingMore, error, hasMore, page, pages]);
+
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
       <div className="shrink-0 bg-s1" style={{ paddingTop: "var(--sat, 0px)" }}>
@@ -199,7 +214,7 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
 
       </div>
 
-      <div className="flex-1 scroll-y px-4 pt-3 pb-8" aria-busy={loading}>
+      <div ref={scrollRef} className="flex-1 scroll-y pt-3 pb-8" aria-busy={loading}>
         {topic?.intro && <section className="mb-4" aria-label="专题简介">
           <p id={introId} className={`text-[13px] text-mut leading-relaxed break-words ${introExpanded ? "" : "clamp-3"}`}>{topic.intro}</p>
           <Button aria-expanded={introExpanded} aria-controls={introId} onClick={() => setIntroExpanded(value => !value)} className="mt-1 px-2 text-[12px] text-primary">{introExpanded ? "收起简介" : "展开简介"}</Button>
@@ -240,6 +255,7 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
           加载更多（{videos.length}/{total}）
         </Button>}
         {!loading && !loadingMore && !hasMore && videos.length > 0 && <div className="py-3 text-center text-[12px] text-dim">已加载全部 {total} 部</div>}
+        <div ref={sentinelRef} className="h-6" aria-hidden="true" />
         {wide && <div className="h-2" />}
       </div>
       {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map((x) => x.id), index: list.findIndex((x) => x.id === v.id), title: kw ? `搜索 · ${kw}` : "搜索" })} />}

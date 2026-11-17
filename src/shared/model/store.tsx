@@ -1,6 +1,6 @@
-import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { api, platform as envPlatform } from "../api/api";
-import { isStrictSecurity, setStrictSecurity as setHtmlStrictSecurity } from "../lib/html";
+import { isStrictSecurity, setStrictSecurity as setHtmlStrictSecurity } from "../lib/securityMode";
 import type { User } from "../api/types";
 import { readStorage, STORAGE_KEYS } from "../storage/storage";
 import { pickGuestData, useAccountData, type GuestData } from "./accountData";
@@ -206,6 +206,26 @@ const Ctx = createContext<Store>(null as unknown as Store);
 export const useStore = () => useContext(Ctx);
 let seq = 0;
 
+/* 独立订阅 Toast 列表：弹出/消失只重渲染 ToastHost，不惊动全应用 30 个 useStore() 页面 */
+let toastList: Toast[] = [];
+let toastNextId = 0;
+const toastListeners = new Set<() => void>();
+function updateToasts(updater: (prev: Toast[]) => Toast[]) {
+  toastList = updater(toastList);
+  toastListeners.forEach((fn) => fn());
+}
+function pushToastItem(item: Omit<Toast, "id">, durationMs: number) {
+  const id = ++toastNextId;
+  updateToasts((prev) => [...prev.slice(-2), { ...item, id }]);
+  window.setTimeout(() => updateToasts((prev) => prev.filter((x) => x.id !== id)), durationMs);
+}
+const subscribeToasts = (fn: () => void) => {
+  toastListeners.add(fn);
+  return () => { toastListeners.delete(fn); };
+};
+const getToasts = () => toastList;
+export const useToasts = () => useSyncExternalStore(subscribeToasts, getToasts);
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [p, setP] = useState<Persist>(loadPersist);
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>(readThemePreference);
@@ -223,7 +243,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const { user, setUser } = account;
   const accountRef = useRef(account); accountRef.current = account;
   const [loginOpen, setLoginOpen] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
   const [lineEpoch, setLineEpoch] = useState(0);
   const [theater, setTheaterState] = useState(false);
   const [fs, setFsState] = useState(false);
@@ -234,7 +253,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [cliRelaxed, setCliRelaxed] = useState(false);
   const [strictSecurityReady, setStrictSecurityReady] = useState(false);
   const [securityPending, setSecurityPending] = useState(false);
-  const toastSeq = useRef(0);
 
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -311,18 +329,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [strictSecurityReady]);
 
   const toast = useCallback((msg: string, icon?: Toast["icon"]) => {
-    const id = ++toastSeq.current;
-    setToasts((t) => [...t.slice(-2), { id, msg, icon }]);
-    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2200);
+    pushToastItem({ msg, icon }, 2200);
   }, []);
   /** 自动选线切换成功后由 `autoLine.ts` 派发，这里只负责显示 */
   useEffect(() => {
     const onLine = (e: Event) => {
       const d = (e as CustomEvent<{ region: "cn" | "intl"; host: string; ms: number }>).detail;
       if (!d) return;
-      const id = ++toastSeq.current;
-      setToasts((t) => [...t.slice(-2), { id, msg: "", line: d }]);
-      window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
+      pushToastItem({ msg: "", line: d }, 3200);
     };
     window.addEventListener("hg:line", onLine);
     return () => window.removeEventListener("hg:line", onLine);
@@ -339,9 +353,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const now = Date.now();
       if (now - last < 60_000) return;
       last = now;
-      const id = ++toastSeq.current;
-      setToasts((t) => [...t.slice(-2), { id, msg: "线路全部不可用，请检查网络或代理", icon: "info" }]);
-      window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3600);
+      pushToastItem({ msg: "线路全部不可用，请检查网络或代理", icon: "info" }, 3600);
     };
     window.addEventListener("hg:line-down", onDown);
     return () => window.removeEventListener("hg:line-down", onDown);
@@ -480,11 +492,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fsIdleSecs: p.fsIdleSecs, setFsIdleSecs,
     searchHist: p.searchHist, addSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
-    toasts, toast, lineEpoch,
+    get toasts() { return toastList; }, toast, lineEpoch,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
     setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setFsIdleSecs, setVolume, addSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
-    toasts, toast, lineEpoch, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
+    toast, lineEpoch, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -11,7 +11,8 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
 ## 事实来源
 
 - 前端脚本与版本：[`package.json`](../../package.json)、[`vite.config.ts`](../../vite.config.ts)、
-  [`tsconfig.json`](../../tsconfig.json)、[`tsconfig.tests.json`](../../tsconfig.tests.json)。
+  [`tsconfig.json`](../../tsconfig.json)、[`tsconfig.node.json`](../../tsconfig.node.json)、
+  [`tsconfig.tests.json`](../../tsconfig.tests.json)。
 - Tauri 配置：[`src-tauri/tauri.conf.json`](../../src-tauri/tauri.conf.json) 的
   `beforeBuildCommand`、`bundle`、`bundle.android.versionCode`；
   [`tauri.macos.conf.json`](../../src-tauri/tauri.macos.conf.json)、
@@ -42,7 +43,7 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
 ## 主运行时路径
 
 1. 安装依赖用 `pnpm install --frozen-lockfile`（CI 全部如此）。`pnpm build` 执行
-   `tsc --noEmit`、`tsc --project tsconfig.tests.json`、`vite build`；`vite.config.ts` 从
+   `tsc --noEmit`、`tsc --project tsconfig.node.json`、`tsc --project tsconfig.tests.json`、`vite build`；`vite.config.ts` 从
    `package.json` 注入 `__APP_VERSION__`，避免界面版本写死。
    Vite 构建目标是 `["chrome66","safari14.1"]`（CSS 目标 `chrome66/safari13`），
    `cssCodeSplit:false`、`cssMinify:false`；`scripts/legacy-css.ts`（enforce:post）在

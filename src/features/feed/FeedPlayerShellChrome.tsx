@@ -1,17 +1,25 @@
-import type { Dispatch, MutableRefObject, PointerEvent as ReactPointerEvent, RefObject, SetStateAction } from "react";
+import { lazy, Suspense, type Dispatch, type MutableRefObject, type PointerEvent as ReactPointerEvent, type RefObject, type SetStateAction } from "react";
 import { Button, SegmentedControl } from "../../shared/ui/ios/controls";
+import { Loader } from "../../shared/ui/ios/effects";
 import { fmtTime } from "../../shared/api/api";
 import type { Episode, Post, VideoCard } from "../../shared/api/types";
 import type { PageInput, Toast } from "../../shared/model/store";
 import { Sheet } from "../../shared/ui/ui";
 import { PlaybackProgress, PlaybackTime, PlayerControls, type PlaybackClock, type VideoHandle } from "../playback";
-import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
-import VideoDetailsPanel from "./VideoDetailsPanel";
 import type { FeedMeta } from "./useFeedActions";
 import type { FeedPanel } from "./useFeedViewport";
 import {
   IBoltF, IClose, ICompress, ILockF, IPauseF, IPlayF, ISearch, IVertSwap, IVol, IVolMute,
 } from "../../shared/ui/icons";
+
+const VideoDetailsPanel = lazy(() => import("./VideoDetailsPanel"));
+const EpisodesPanel = lazy(() => import("./Panels").then(m => ({ default: m.EpisodesPanel })));
+const CommentsPanel = lazy(() => import("./Panels").then(m => ({ default: m.CommentsPanel })));
+const ArticlePanel = lazy(() => import("./Panels").then(m => ({ default: m.ArticlePanel })));
+
+function PanelFallback() {
+  return <div className="flex-1 grid place-items-center py-10"><Loader className="w-6 h-6 spinner" /></div>;
+}
 
 type Props = {
   videoRef: RefObject<VideoHandle | null>;
@@ -233,11 +241,13 @@ export function FeedPlayerShellChrome({
       {isDesktop ? (
         <div className={`desktop-dock-panel ${panel ? "is-open" : ""}`}>
           <div className="desktop-dock-inner">
-            {panel === "detail" ? detailBody(() => setPanel(null)) : panel === "episodes" ? (
-              <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} />
-            ) : panel === "comments" ? (
-              <CommentsPanel videoId={curId} ep={curEp} total={meta.comment} kind={kind} onClose={() => setPanel(null)} />
-            ) : null}
+            <Suspense fallback={<PanelFallback />}>
+              {panel === "detail" ? detailBody(() => setPanel(null)) : panel === "episodes" ? (
+                <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} />
+              ) : panel === "comments" ? (
+                <CommentsPanel videoId={curId} ep={curEp} total={meta.comment} kind={kind} onClose={() => setPanel(null)} />
+              ) : null}
+            </Suspense>
           </div>
         </div>
       ) : (
@@ -245,14 +255,22 @@ export function FeedPlayerShellChrome({
           {/* 评论：移动端底部弹层（右侧操作栏「评论」入口） */}
           <Sheet open={active && panel === "comments"} onClose={() => setPanel(null)}>
             <div className="flex flex-col" style={{ height: "72dvh" }}>
-              <CommentsPanel videoId={curId} ep={curEp} total={meta.comment} kind={kind} onClose={() => setPanel(null)} />
+              {panel === "comments" && (
+                <Suspense fallback={<PanelFallback />}>
+                  <CommentsPanel videoId={curId} ep={curEp} total={meta.comment} kind={kind} onClose={() => setPanel(null)} />
+                </Suspense>
+              )}
             </div>
           </Sheet>
 
           {/* 吃瓜图文正文 */}
           <Sheet open={active && panel === "article"} onClose={() => setPanel(null)}>
             <div className="flex flex-col" style={{ height: "78dvh" }}>
-              <ArticlePanel title={meta.title} html={articleHtml} cover={meta.cover} hot={post?.hot} onClose={() => setPanel(null)} />
+              {panel === "article" && (
+                <Suspense fallback={<PanelFallback />}>
+                  <ArticlePanel title={meta.title} html={articleHtml} cover={meta.cover} hot={post?.hot} onClose={() => setPanel(null)} />
+                </Suspense>
+              )}
             </div>
           </Sheet>
 
@@ -271,12 +289,12 @@ export function FeedPlayerShellChrome({
                 </Button>
               </div>
 
-              <div className="flex-1 min-h-0">
-                {panel === "episodes" ? (
-                  <EpisodesPanel bare videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} />
-                ) : (
-                  detailBody()
-                )}
+              <div className="flex-1 min-h-0 flex flex-col">
+                <Suspense fallback={<PanelFallback />}>
+                  {panel === "episodes" ? (
+                    <EpisodesPanel bare videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} />
+                  ) : (panel === "detail" ? detailBody() : null)}
+                </Suspense>
               </div>
             </div>
           </Sheet>

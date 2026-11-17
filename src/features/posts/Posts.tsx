@@ -14,6 +14,7 @@ import { InplaceSearch } from "../search/InplaceSearch";
 import { FilteredContent } from "../../shared/ui/FilteredContent";
 import { TagBlockMenu } from "../../shared/ui/TagBlockMenu";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
+import { usePaginatedList } from "../../shared/lib/usePaginatedList";
 import { CommentsPanel } from "../feed/Panels";
 import { postHot } from "./postData";
 
@@ -23,59 +24,13 @@ export function PostsPage({ onBack, wide }: { onBack: () => void; wide: boolean 
   const { preferences } = useContentPreferences();
   const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
   const [searching, setSearching] = useState(false);
-  const [items, setItems] = useState<Post[]>([]);
-  const [page, setPage] = useState(0);
-  const [pages, setPages] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-  const busy = useRef(false);
-  const seqRef = useRef(0);
-  const sentinel = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const loadMore = async (reset = false) => {
-    if (busy.current && !reset) return;
-    const seq = reset ? ++seqRef.current : seqRef.current;
-    const next = reset ? 1 : page + 1;
-    if (!reset && next > pages) return;
-    busy.current = true;
-    setLoading(true);
-    setErr("");
-    try {
-      const res = await api.postCategory("remen-chigua", next, 20, "latest");
-      if (seq !== seqRef.current) return;
-      setItems((prev) => {
-        const base = reset ? [] : prev;
-        const seen = new Set(base.map((x) => x.id));
-        return [...base, ...(res?.items || []).filter((x) => !seen.has(x.id))];
-      });
-      setPage(next);
-      setPages(res?.pagination?.pages || next);
-      setErr("");
-    } catch (e) {
-      if (seq === seqRef.current) setErr((e as Error).message || "吃瓜内容加载失败");
-    } finally {
-      if (seq === seqRef.current) {
-        busy.current = false;
-        setLoading(false);
-      }
-    }
-  };
-
-  useEffect(() => {
-    setItems([]); setPage(0); setPages(1);
-    void loadMore(true);
-    return () => { seqRef.current++; busy.current = false; };
-    /* eslint-disable-next-line */
-  }, [lineEpoch]);
-  useEffect(() => {
-    const el = sentinel.current;
-    if (!el || loading || err || filtering || page >= pages) return;
-    const io = new IntersectionObserver((es) => { if (es[0].isIntersecting) void loadMore(); }, { root: scrollRef.current, rootMargin: "240px" });
-    io.observe(el);
-    return () => io.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pages, loading, err, filtering]);
+  const { items, page, pages, loading, err, loadMore, scroller: scrollRef, sentinel } = usePaginatedList<Post>({
+    filtering,
+    resetKey: lineEpoch,
+    rootMargin: "240px",
+    getId: (item) => item.id,
+    request: (next) => api.postCategory("remen-chigua", next, 20, "latest"),
+  });
 
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">

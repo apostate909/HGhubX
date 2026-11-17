@@ -51,6 +51,14 @@ export default defineConfig(({ mode }) => {
       cssMinify: false,
       minify: "esbuild",
       sourcemap: false,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes("node_modules/hls.js")) return "hls";
+            return undefined;
+          },
+        },
+      },
     },
   };
 });

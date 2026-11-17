@@ -11,6 +11,7 @@ import {
 } from "../../shared/ui/icons";
 import type { FeedMeta } from "./useFeedActions";
 import type { FeedPanel } from "./useFeedViewport";
+import "../../styles/video-details.css";
 
 type Props = {
   isActive: boolean;
