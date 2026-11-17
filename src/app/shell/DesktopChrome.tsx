@@ -27,8 +27,8 @@ export function DesktopTitleBar({ collapsed, onToggle }: { collapsed: boolean; o
     };
     sync();
     appWindow().onResized(sync)
-      .then((f: () => void) => { if (disposed) f(); else un = f; }).catch(() => {});
-    return () => { disposed = true; un?.(); };
+      .then((f: () => void) => { if (disposed) { try { f(); } catch { /* ignore */ } } else un = f; }).catch(() => {});
+    return () => { disposed = true; try { un?.(); } catch { /* ignore */ } };
   }, []);
 
   return (

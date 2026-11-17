@@ -240,8 +240,12 @@ try {
     const page = await context.newPage();
     page.on("pageerror", error => report.errors.push(error.message));
     await page.route("**/*", route => {
-      if (new URL(route.request().url()).origin === new URL(origin).origin) return route.continue();
-      report.external.push(route.request().url()); return route.abort();
+      const target = new URL(route.request().url());
+      if (target.origin === new URL(origin).origin) return route.continue();
+      // html-security.ts rewrites article <img> to the local media loopback (127.0.0.1:17650/img or hg.localhost/img).
+      const isLocalImgProxy = (target.origin === "http://127.0.0.1:17650" || target.hostname === "hg.localhost") && target.pathname === "/img";
+      if (!isLocalImgProxy) report.external.push(route.request().url());
+      return route.abort();
     });
     for (const [label, path] of [["HTML sanitizer & SSRF link policy", "tests/html-security.html"], ["Strict security boot & persistence", "tests/security-settings.html"]]) {
       await page.goto(`${origin}${path}`);
