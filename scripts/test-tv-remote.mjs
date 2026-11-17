@@ -36,7 +36,7 @@ async function scenario(name, run) {
     await writeFile(join(output, "report.json"), JSON.stringify(report, null, 2));
   }
 }
-async function open({ accepted = true, isolated = false, width = 1280, height = 720, fixture = {} } = {}) {
+async function open({ accepted = true, isolated = false, width = 1280, height = 720, fixture = {}, posterSizes = {} } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce", userAgent: "Mozilla/5.0 (Linux; Android 12; TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" });
   contexts.push(context);
   activeContext = context;
@@ -46,7 +46,11 @@ async function open({ accepted = true, isolated = false, width = 1280, height = 
   await context.route("**/*", async route => {
     const url = new URL(route.request().url());
     if (url.origin === origin) return route.continue();
-    if (url.origin === "http://hg.localhost" && url.pathname === "/img") return route.fulfill({ status: 200, contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="360"><rect width="240" height="360" fill="#234960"/><path d="M95 140L160 180L95 220Z" fill="#60cdff"/></svg>' });
+    if (url.origin === "http://hg.localhost" && url.pathname === "/img") {
+      const id = new URL(url.searchParams.get("u")).pathname.split("/").at(-1);
+      const [width, height] = posterSizes[id] || [240, 360];
+      return route.fulfill({ status: 200, contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 240 360"><rect width="240" height="360" fill="#234960"/><path d="M95 140L160 180L95 220Z" fill="#60cdff"/></svg>` });
+    }
     if (url.origin === "http://hg.localhost" && url.pathname === "/seg") {
       const data = await readFile(join(mediaDirectory, "fixture.mp4"));
       const range = route.request().headers().range;
@@ -79,6 +83,21 @@ const screenshot = async (page, file) => {
   await page.screenshot({ path: join(output, file), animations: "disabled" });
   report.screenshots.push(file);
 };
+async function assertShelfWidths(page, state) {
+  const sizes = await page.evaluate(() => {
+    const shelf = document.querySelector('[data-tv-region="home-继续观看"]');
+    return { expected: parseFloat(getComputedStyle(document.documentElement).fontSize) * 8,
+      cards: [...shelf.children].map(slot => ({ slot: slot.offsetWidth, card: slot.querySelector(".tv-card").offsetWidth,
+        art: slot.querySelector(".tv-card-art").offsetWidth })),
+      recommendation: document.querySelector('[data-tv-region="home-推荐"] .tv-card')?.offsetWidth };
+  });
+  assert(sizes.cards.length > 0, `${state}: history shelf must contain cards`);
+  for (const [index, widths] of sizes.cards.entries()) for (const [part, width] of Object.entries(widths)) {
+    assert(Math.abs(width - sizes.expected) <= 1, `${state}: history ${index} ${part} width ${width} must equal shelf width ${sizes.expected}`);
+  }
+  if (sizes.recommendation !== undefined) assert(Math.abs(sizes.recommendation - sizes.expected) <= 1, `${state}: direct recommendation cards use the same width`);
+  return sizes;
+}
 const catalogStatus = page => page.evaluate(async () => {
   const request = indexedDB.open("hghubx-tv-catalog-v1", 1);
   const db = await new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
@@ -97,6 +116,51 @@ try {
   await vite.listen(); origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
   browser = await chromium.launch({ headless: true, executablePath: process.env.BROWSER_EXECUTABLE || chromium.executablePath(), args: ["--autoplay-policy=no-user-gesture-required"] });
   report.browser = browser.version();
+  await scenario("history-shelf-width-loading-ready", async () => {
+    const { page } = await open({ fixture: { heldDetailIds: [1, 2, 3], legacy: { history: [1, 2, 3].map((id, index) => ({ id, ep: 1, t: 5, dur: 60, at: 30 - index })) } },
+      posterSizes: { 1: [160, 400], 2: [900, 300], 3: [500, 500] } });
+    const shelf = page.locator('[data-tv-region="home-继续观看"]');
+    await page.waitForFunction(() => window.__tvFixture.detailReleases.length === 2);
+    assert.equal(await shelf.getByRole("button", { name: "正在加载影片信息", exact: true }).count(), 3);
+    await page.locator('[data-tv-region="home-推荐"] .tv-card').first().waitFor();
+    const loading = await assertShelfWidths(page, "loading");
+    await page.evaluate(() => {
+      const fixture = window.__tvFixture;
+      fixture.cards[0].title = "短名";
+      fixture.cards[1].title = "这是一部标题很长且不应改变封面宽度的作品";
+      fixture.cards[2].title = "A_Long_Unbroken_Title_For_Card_Width";
+      fixture.heldDetailIds = []; fixture.releaseDetails();
+    });
+    await page.waitForFunction(() => {
+      const cards = [...document.querySelectorAll('[data-tv-region="home-继续观看"] .tv-card')];
+      return cards.length === 3 && cards.every(card => {
+        const image = card.querySelector("img"); return image?.complete && image.naturalWidth > 0;
+      });
+    });
+    assert.deepEqual(await shelf.locator("strong").allTextContents(), ["短名", "这是一部标题很长且不应改变封面宽度的作品", "A_Long_Unbroken_Title_For_Card_Width"]);
+    assert.deepEqual(await shelf.locator("img").evaluateAll(images => images.map(image => [image.naturalWidth, image.naturalHeight])), [[160, 400], [900, 300], [500, 500]]);
+    const ready = [];
+    for (const [width, height] of [[1280, 720], [1920, 1080], [3840, 2160]]) {
+      await page.setViewportSize({ width, height });
+      ready.push({ width, height, ...await assertShelfWidths(page, "ready") });
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    // Simulate a WebView without flex gap; the fallback belongs to each slot,
+    // including LibraryCard's observer wrapper, rather than its inner button.
+    const gaps = await page.evaluate(() => {
+      document.documentElement.setAttribute("data-legacy-flex-gap", "");
+      return ["home-继续观看", "home-推荐"].map(region => {
+        const track = document.querySelector(`[data-tv-region="${region}"]`); track.style.gap = "0px";
+        const slots = [...track.children];
+        return { region, expected: parseFloat(getComputedStyle(document.documentElement).fontSize) * .9,
+          values: slots.slice(1, 3).map((slot, index) => slot.offsetLeft - slots[index].offsetLeft - slots[index].offsetWidth) };
+      });
+    });
+    for (const row of gaps) for (const gap of row.values) assert(Math.abs(gap - row.expected) <= 1, `${row.region}: legacy spacing ${gap} must equal ${row.expected}`);
+    await assertShelfWidths(page, "legacy gap");
+    await screenshot(page, "history-shelf-equal-width-1280x720.png");
+    return { loading, ready, legacyGaps: gaps };
+  });
   await scenario("agreement-gate-single-controller", async () => {
     const { page } = await open({ accepted: false });
     await page.locator('[data-tv-focus="agreement-checkbox"]').waitFor();
@@ -279,6 +343,7 @@ try {
     const blocked = page.locator('[data-tv-region="home-继续观看"] [data-tv-focus="video:1"]');
     assert.equal(await blocked.locator("img").count(), 0, "Resolved blocked tags must never mount a cover");
     assert.equal((await calls(page, "api_video")).filter(call => call.args.id === 1).length, 1, "Unknown legacy tags must be resolved even when hideUntagged is enabled");
+    await assertShelfWidths(page, "blocked and failed metadata");
     await page.evaluate(() => { window.__tvFixture.failDetailIds = []; });
     const retry = page.locator('[data-tv-region="home-继续观看"] [data-tv-focus="video:6"]');
     await retry.focus(); await page.keyboard.press("Enter");
@@ -287,6 +352,7 @@ try {
     assert.equal(await page.locator(".tv-detail-route").count(), 0, "Confirm on failed metadata retries without entering detail");
     assert.equal(await activeKey(page), "video:6", "Metadata replacement preserves the focused card");
     assert.equal((await calls(page, "api_video")).filter(call => call.args.id === 6).length, 2, "Retry must request failed metadata exactly once");
+    await assertShelfWidths(page, "metadata retry complete");
     return { unknownTagsHydrated: true, blockedCoverAbsent: true, retryByRemote: true, focusPreserved: true };
   });
   await scenario("player-remote-seek-last-part", async () => {

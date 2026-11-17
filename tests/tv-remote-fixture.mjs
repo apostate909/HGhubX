@@ -1,5 +1,5 @@
 /** Serialized into Chromium before the actual application module loads. */
-export function installTvFixture({ accepted = false, legacy, contentPreferences, detailDelay = 0, failDetailIds = [] } = {}) {
+export function installTvFixture({ accepted = false, legacy, contentPreferences, detailDelay = 0, failDetailIds = [], heldDetailIds = [] } = {}) {
   const base = "https://tv.fixture.invalid";
   if (accepted) localStorage.setItem("hghubx_usage_agreement", JSON.stringify({ version: "2026-11-15-v1", accepted: true, acceptedAt: new Date().toISOString() }));
   localStorage.setItem("hghubx_auto_line", "off");
@@ -14,7 +14,7 @@ export function installTvFixture({ accepted = false, legacy, contentPreferences,
     description: "遥控器回归用故事简介", author: { id: 1, name: "Fixture" } }));
   const posts = Array.from({ length: 6 }, (_, index) => ({ id: index + 1, title: `我的时间视频${index + 1}`, cover: `${base}/post/${index + 1}`, tags: ["视频"], hot: 20 - index, video_url: "" }));
   const fixture = { base, cards, posts, calls: [], unknown: [], failAck: false, failPosts: false, postActive: 0, postMax: 0, startupReady: 0, keyboardListeners: 0,
-    detailDelay, failDetailIds, detailActive: 0, detailMax: 0, heldDetailIds: [], detailReleases: [],
+    detailDelay, failDetailIds, detailActive: 0, detailMax: 0, heldDetailIds, detailReleases: [],
     releaseDetails() { const releases = fixture.detailReleases.splice(0); releases.forEach(release => release()); },
     nativeListeners: 0, exits: 0, catalogMode: "normal", holdCatalog: false, releaseCatalog: null, failPostIds: [], backChannel: null,
     back() { if (!fixture.backChannel) throw new Error("Missing native back listener"); fixture.backChannel.onmessage({}); } };
