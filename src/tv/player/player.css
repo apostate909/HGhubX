@@ -12,6 +12,8 @@
 .tv-detail-tags { display: flex; flex-wrap: wrap; gap: 0.4444rem; margin: 0.7778rem 0; }
 .tv-detail-tags span { font-size: 0.8889rem; line-height: 1.3333rem; border-radius: 0.3333rem; padding: 0.1111rem 0.5rem; background: #241d16; color: #c9bbaa; }
 .tv-detail-actions { display: flex; flex-wrap: wrap; gap: 0.6667rem; margin-top: 1.1111rem; }
+.tv-primary { background: var(--tv-accent); border-color: var(--tv-accent); color: #221607; font-weight: 700; }
+.tv-primary:focus { background: #f2b455; }
 .tv-detail-episode-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.7778rem; padding: 0.2778rem; }
 .tv-detail-episode-grid button { min-height: 3.1111rem; text-align: left; overflow-wrap: anywhere; }
 .tv-detail-episode-grid small { display: block; margin-top: 0.2222rem; color: var(--tv-accent); font-size: 0.8889rem; }
