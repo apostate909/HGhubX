@@ -15,16 +15,17 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scriptScenarios = {
   tv: { script: "test-tv-remote.mjs", timeout: 480000, metrics: { transport: "mock Tauri IPC; actual TV bootstrap, worker, library and player" } },
 };
+const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "ios-native", "recovery", "review", "tv"];
 const { values: args } = parseArgs({ options: {
   "media-dir": { type: "string" }, output: { type: "string" }, "browser-executable": { type: "string" },
   scenarios: { type: "string", default: "seek,legacy,lifecycle,gesture,proxy,portrait-fit" }, help: { type: "boolean" },
 } });
 if (args.help) {
-  console.log("pnpm test:playback [--media-dir DIR] [--output NEW_DIR] [--browser-executable PATH] [--scenarios seek,legacy,lifecycle,gesture,proxy,portrait-fit,ios-native,recovery,review,tv]");
+  console.log(`pnpm test:playback [--media-dir DIR] [--output NEW_DIR] [--browser-executable PATH] [--scenarios all|${ALL_SCENARIOS.join(",")}]`);
   process.exit(0);
 }
-const scenarios = args.scenarios.split(",");
-assert(scenarios.length && scenarios.every(s => ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "ios-native", "recovery", "review", "tv"].includes(s)), "Unknown scenario");
+const scenarios = args.scenarios === "all" ? ALL_SCENARIOS : args.scenarios.split(",");
+assert(scenarios.length && scenarios.every(s => ALL_SCENARIOS.includes(s)), "Unknown scenario");
 const output = resolve(args.output || join(root, "test-results", "playback", new Date().toISOString().replace(/[:.]/g, "-")));
 await mkdir(dirname(output), { recursive: true });
 await mkdir(output); // Refuse to overwrite artifacts from an earlier run.
