@@ -123,6 +123,12 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
    lightningcss 压缩，并追加 `src/styles/legacy-webview.css` 的几何回退。标准入口
    `src/main.tsx` 与 TV 入口 `src/tv/bootstrap.tsx` 都在首个成功 commit 调
    `markStartupReady()` 解除看门狗；协议未签署不算启动失败。
+7. 冷启动无闪烁链路：原生窗口/系统启动屏（`tauri.conf.json`、`patch-android-splash.mjs`、
+   `patch-ios-splash.mjs`）、`index.html` 的 `html[data-hg-launching]` 背景锁与 `.hg-launch`
+   统一固定为 `#071218`，阻止外链 CSS 在 React 挂载前把 `body` 刷成亮色 `#eeece7` 或暗灰底。
+   `StartupGate` 首帧独占提交合成线程动画，下一帧再并发挂载已分离 `Feed`/`hls.js` 的业务壳，
+   待入场时间满足且底层界面提交（`contentReady` 或超时兜底）后再释放 `data-hg-launching`、同步
+   `meta[name="theme-color"]` 并淡出覆盖层。
 
 ## 状态转换
 

@@ -148,7 +148,9 @@ function applyTheme(theme: Theme) {
   document.documentElement.style.colorScheme = theme;
   root.dataset.theme = theme;
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta) meta.content = theme === "light" ? "#eeece7" : "#121212";
+  if (meta && !root.hasAttribute("data-hg-launching")) {
+    meta.content = theme === "light" ? "#eeece7" : "#121212";
+  }
 }
 
 let themeTransitionTimer = 0;

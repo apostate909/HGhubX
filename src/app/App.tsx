@@ -6,7 +6,6 @@ import { isMobile, selfTest } from "../shared/api/api";
 import { addPluginListener, invoke } from "@tauri-apps/api/core";
 import { runBack } from "../shared/lib/back";
 import Home from "../features/feed/Home";
-import { Feed } from "../features/feed";
 import LoginModal from "../features/account/LoginModal";
 import { ToastHost } from "../shared/ui/ui";
 import { DesktopRail, DesktopTitleBar } from "./shell/DesktopChrome";
@@ -15,6 +14,9 @@ import { tracePlayback } from "../shared/diagnostics/playbackDiagnostics";
 import { IGrid, IGridF, IHome, IHomeF, ISearch, IUser, IUserF } from "../shared/ui/icons";
 
 // Local chunks load on first visit; visited tabs stay mounted as before.
+// Feed (+ hls.js) is separated from the initial shell so cold start mounts chrome and
+// starts app_boot / autoLine / api_feed before compiling the 524 kB media engine.
+const Feed = lazy(() => import("../features/feed/Feed"));
 const Search = lazy(() => import("../features/search/Search"));
 const RankPage = lazy(() => import("../features/search/Search").then(module => ({ default: module.RankPage })));
 const Category = lazy(() => import("../features/category/Category"));
